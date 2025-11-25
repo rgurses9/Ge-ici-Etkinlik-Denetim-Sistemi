@@ -1,0 +1,5 @@
+{
+  "name": "Geçici Etkinlik Denetim Sistemi",
+  "description": "Etkinlikler için kimlik doğrulama, kota takibi ve raporlama sistemi.",
+  "requestFramePermissions": []
+}
