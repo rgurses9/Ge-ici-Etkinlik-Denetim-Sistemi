@@ -1,9 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import Login from './components/Login';
 import AdminDashboard from './components/AdminDashboard';
 import AuditScreen from './components/AuditScreen';
 import { User, Event, ScanEntry, SessionState, Citizen } from './types';
 import { INITIAL_USERS, INITIAL_EVENTS } from './constants';
+import { db } from './firebase';
+import { 
+  collection, 
+  onSnapshot, 
+  doc, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc, 
+  query, 
+  orderBy,
+  writeBatch
+} from 'firebase/firestore';
 
 const App: React.FC = () => {
   // --- Global State ---
@@ -12,12 +24,12 @@ const App: React.FC = () => {
     currentUser: null,
   });
 
-  const [events, setEvents] = useState<Event[]>(INITIAL_EVENTS);
-  const [users, setUsers] = useState<User[]>(INITIAL_USERS);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [scannedEntries, setScannedEntries] = useState<Record<string, ScanEntry[]>>({});
   
   // Theme State
   const [isDarkMode, setIsDarkMode] = useState(() => {
-    // Check local storage or preference
     if (typeof window !== 'undefined') {
        return localStorage.getItem('geds_theme') === 'dark';
     }
@@ -39,102 +51,69 @@ const App: React.FC = () => {
   
   // Audit State
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
-  const [scannedEntries, setScannedEntries] = useState<Record<string, ScanEntry[]>>({});
 
-  // Real-time Sync Channel
-  const channelRef = useRef<BroadcastChannel | null>(null);
+  // --- Firestore Subscriptions ---
 
-  // --- Real-time Sync Setup ---
+  // 1. Users Subscription & Initial Seeding
   useEffect(() => {
-    // Create a broadcast channel for real-time communication between tabs
-    const channel = new BroadcastChannel('geds_live_traffic_channel');
-    channelRef.current = channel;
-
-    channel.onmessage = (event) => {
-      const { type, payload } = event.data;
-      console.log('Real-time update received:', type);
-
-      if (type === 'NEW_SCAN') {
-        const entry = payload as ScanEntry;
-        // Update Scanned Entries
-        setScannedEntries(prev => {
-          const eventEntries = prev[entry.eventId] || [];
-          // Avoid duplicates if latency causes double send
-          if (eventEntries.find(e => e.id === entry.id)) return prev;
-          return {
-            ...prev,
-            [entry.eventId]: [...eventEntries, entry]
-          };
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+      const fetchedUsers: User[] = snapshot.docs.map(doc => doc.data() as User);
+      
+      // Seed Initial Users if DB is empty
+      if (fetchedUsers.length === 0) {
+        console.log("Seeding initial users to Firestore...");
+        INITIAL_USERS.forEach(async (user) => {
+          await setDoc(doc(db, 'users', user.id), user);
         });
-        // Update Event Count
-        setEvents(prevEvents => prevEvents.map(e => 
-          e.id === entry.eventId 
-            ? { ...e, currentCount: e.currentCount + 1 }
-            : e
-        ));
+      } else {
+        setUsers(fetchedUsers);
       }
+    });
 
-      if (type === 'BULK_SCAN') {
-        const entries = payload as ScanEntry[];
-        if (entries.length === 0) return;
-        const eventId = entries[0].eventId;
-
-        setScannedEntries(prev => {
-          const eventEntries = prev[eventId] || [];
-          // Filter duplicates
-          const newUnique = entries.filter(n => !eventEntries.find(e => e.id === n.id));
-          return {
-            ...prev,
-            [eventId]: [...eventEntries, ...newUnique]
-          };
-        });
-
-        setEvents(prevEvents => prevEvents.map(e => 
-          e.id === eventId 
-            ? { ...e, currentCount: e.currentCount + entries.length }
-            : e
-        ));
-      }
-
-      if (type === 'DELETE_SCAN') {
-        const { entryId, eventId } = payload;
-        setScannedEntries(prev => {
-          const eventEntries = prev[eventId] || [];
-          return {
-            ...prev,
-            [eventId]: eventEntries.filter(e => e.id !== entryId)
-          };
-        });
-        setEvents(prevEvents => prevEvents.map(e => 
-          e.id === eventId 
-            ? { ...e, currentCount: Math.max(0, e.currentCount - 1) }
-            : e
-        ));
-      }
-
-      if (type === 'UPDATE_EVENTS') {
-        // Full event list sync for status changes
-        setEvents(payload);
-      }
-
-      if (type === 'UPDATE_USERS') {
-        setUsers(payload);
-      }
-    };
-
-    return () => {
-      channel.close();
-    };
+    return () => unsubUsers();
   }, []);
 
-  // --- Helper to Broadcast ---
-  const broadcast = (type: string, payload: any) => {
-    if (channelRef.current) {
-      channelRef.current.postMessage({ type, payload });
-    }
-  };
+  // 2. Events Subscription & Initial Seeding
+  useEffect(() => {
+    const unsubEvents = onSnapshot(collection(db, 'events'), (snapshot) => {
+      const fetchedEvents: Event[] = snapshot.docs.map(doc => doc.data() as Event);
+      
+      // Seed Initial Events if DB is empty
+      if (fetchedEvents.length === 0) {
+        console.log("Seeding initial events to Firestore...");
+        INITIAL_EVENTS.forEach(async (event) => {
+          await setDoc(doc(db, 'events', event.id), event);
+        });
+      } else {
+        setEvents(fetchedEvents);
+      }
+    });
 
-  // --- Handlers ---
+    return () => unsubEvents();
+  }, []);
+
+  // 3. Scanned Entries Subscription
+  useEffect(() => {
+    const q = query(collection(db, 'scanned_entries'), orderBy('timestamp', 'asc'));
+    const unsubEntries = onSnapshot(q, (snapshot) => {
+      const fetchedEntries: ScanEntry[] = snapshot.docs.map(doc => doc.data() as ScanEntry);
+      
+      // Group by eventId
+      const grouped: Record<string, ScanEntry[]> = {};
+      fetchedEntries.forEach(entry => {
+        if (!grouped[entry.eventId]) {
+          grouped[entry.eventId] = [];
+        }
+        grouped[entry.eventId].push(entry);
+      });
+      
+      setScannedEntries(grouped);
+    });
+
+    return () => unsubEntries();
+  }, []);
+
+  // --- Handlers (Now using Firestore) ---
 
   const handleLogin = (user: User) => {
     setSession({
@@ -151,26 +130,33 @@ const App: React.FC = () => {
     setActiveEventId(null);
   };
 
-  const handleAddEvent = (event: Event) => {
-    const newEvents = [...events, event];
-    setEvents(newEvents);
-    broadcast('UPDATE_EVENTS', newEvents);
+  const handleAddEvent = async (event: Event) => {
+    try {
+      await setDoc(doc(db, 'events', event.id), event);
+    } catch (e) {
+      console.error("Error adding event: ", e);
+    }
   };
 
-  const handleDeleteEvent = (id: string) => {
-    const newEvents = events.filter(e => e.id !== id);
-    setEvents(newEvents);
-    broadcast('UPDATE_EVENTS', newEvents);
+  const handleDeleteEvent = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'events', id));
+      // Optionally delete related scans (batch delete usually required for many docs)
+    } catch (e) {
+      console.error("Error deleting event: ", e);
+    }
   };
 
-  const handleReactivateEvent = (id: string) => {
-    const newEvents = events.map(e => 
-      e.id === id 
-        ? { ...e, status: 'ACTIVE' as const, completionDuration: undefined }
-        : e
-    );
-    setEvents(newEvents);
-    broadcast('UPDATE_EVENTS', newEvents);
+  const handleReactivateEvent = async (id: string) => {
+    try {
+      const eventRef = doc(db, 'events', id);
+      await updateDoc(eventRef, {
+        status: 'ACTIVE',
+        completionDuration: null // Remove field (or use deleteField())
+      });
+    } catch (e) {
+      console.error("Error reactivating event: ", e);
+    }
   };
 
   const handleStartAudit = (eventId: string) => {
@@ -178,126 +164,125 @@ const App: React.FC = () => {
   };
 
   const handleEndAudit = () => {
-    // Just close the screen, don't change status (e.g. clicking X)
     setActiveEventId(null);
   };
 
-  const handleFinishAndCloseAudit = (duration: string) => {
+  const handleFinishAndCloseAudit = async (duration: string) => {
     if (activeEventId) {
-      const newEvents = events.map(e => 
-        e.id === activeEventId 
-          ? { ...e, status: 'PASSIVE' as const, completionDuration: duration }
-          : e
-      );
-      setEvents(newEvents);
-      setActiveEventId(null);
-      broadcast('UPDATE_EVENTS', newEvents);
+      try {
+        const eventRef = doc(db, 'events', activeEventId);
+        await updateDoc(eventRef, {
+          status: 'PASSIVE',
+          completionDuration: duration
+        });
+        setActiveEventId(null);
+      } catch (e) {
+        console.error("Error finishing audit: ", e);
+      }
     }
   };
 
-  const handleScan = (entry: ScanEntry) => {
-    // Local Update
-    setScannedEntries(prev => {
-      const eventEntries = prev[entry.eventId] || [];
-      return {
-        ...prev,
-        [entry.eventId]: [...eventEntries, entry]
-      };
-    });
-
-    setEvents(prevEvents => prevEvents.map(e => 
-      e.id === entry.eventId 
-        ? { ...e, currentCount: e.currentCount + 1 }
-        : e
-    ));
-
-    // Broadcast Real-time
-    broadcast('NEW_SCAN', entry);
+  const handleScan = async (entry: ScanEntry) => {
+    try {
+      // 1. Add Entry
+      await setDoc(doc(db, 'scanned_entries', entry.id), entry);
+      
+      // 2. Increment Event Count (Optimistic or Transactional could be better, but simple update works here)
+      const event = events.find(e => e.id === entry.eventId);
+      if (event) {
+        await updateDoc(doc(db, 'events', entry.eventId), {
+          currentCount: event.currentCount + 1
+        });
+      }
+    } catch (e) {
+      console.error("Error adding scan: ", e);
+    }
   };
 
-  const handleBulkScan = (newEntries: ScanEntry[]) => {
+  const handleBulkScan = async (newEntries: ScanEntry[]) => {
     if (newEntries.length === 0) return;
     const eventId = newEntries[0].eventId;
+    
+    try {
+      const batch = writeBatch(db);
+      
+      // Add all entries
+      newEntries.forEach(entry => {
+        const ref = doc(db, 'scanned_entries', entry.id);
+        batch.set(ref, entry);
+      });
 
-    // Local Update
-    setScannedEntries(prev => {
-      const eventEntries = prev[eventId] || [];
-      return {
-        ...prev,
-        [eventId]: [...eventEntries, ...newEntries]
-      };
-    });
+      // Update event count
+      const event = events.find(e => e.id === eventId);
+      if (event) {
+        const eventRef = doc(db, 'events', eventId);
+        batch.update(eventRef, {
+          currentCount: event.currentCount + newEntries.length
+        });
+      }
 
-    setEvents(prevEvents => prevEvents.map(e => 
-      e.id === eventId 
-        ? { ...e, currentCount: e.currentCount + newEntries.length }
-        : e
-    ));
-
-    // Broadcast Real-time
-    broadcast('BULK_SCAN', newEntries);
+      await batch.commit();
+    } catch (e) {
+      console.error("Error bulk scanning: ", e);
+    }
   };
 
-  const handleDeleteScan = (entryId: string) => {
+  const handleDeleteScan = async (entryId: string) => {
     if (!activeEventId) return;
 
-    // Local Update
-    setScannedEntries(prev => {
-      const eventEntries = prev[activeEventId] || [];
-      return {
-        ...prev,
-        [activeEventId]: eventEntries.filter(e => e.id !== entryId)
-      };
-    });
-
-    setEvents(prevEvents => prevEvents.map(e => 
-      e.id === activeEventId 
-        ? { ...e, currentCount: Math.max(0, e.currentCount - 1) }
-        : e
-    ));
-
-    // Broadcast Real-time
-    broadcast('DELETE_SCAN', { entryId, eventId: activeEventId });
+    try {
+      // 1. Delete Entry
+      await deleteDoc(doc(db, 'scanned_entries', entryId));
+      
+      // 2. Decrement Event Count
+      const event = events.find(e => e.id === activeEventId);
+      if (event) {
+        await updateDoc(doc(db, 'events', activeEventId), {
+          currentCount: Math.max(0, event.currentCount - 1)
+        });
+      }
+    } catch (e) {
+      console.error("Error deleting scan: ", e);
+    }
   };
 
   const handleDatabaseUpdate = (freshDatabase: Citizen[]) => {
-    // This logic runs locally on each client when they connect to DB.
-    // If we wanted to sync this, we would broadcast UPDATE_SCAN_ENTRIES, 
-    // but typically each client validates against the fresh DB independently.
-    setScannedEntries(prev => {
-      const newEntries = { ...prev };
-      let hasChanges = false;
-
-      Object.keys(newEntries).forEach(eventId => {
-        newEntries[eventId] = newEntries[eventId].map(entry => {
-          if (entry.citizen.name === 'Veri Tabanında' && entry.citizen.surname === 'Bulunamadı') {
-            const foundInDb = freshDatabase.find(c => c.tc === entry.citizen.tc);
-            if (foundInDb) {
-              hasChanges = true;
-              return {
-                ...entry,
-                citizen: { ...foundInDb }
-              };
-            }
-          }
-          return entry;
-        });
-      });
-
-      return hasChanges ? newEntries : prev;
+    // This logic handles retroactive updates for "Not Found" records
+    // We iterate through all scanned entries in Firestore that have name "Veri Tabanında"
+    // and if found in fresh DB, we update them.
+    
+    // Flatten all entries
+    Object.values(scannedEntries).flat().forEach(async (entry) => {
+      if (entry.citizen.name === 'Veri Tabanında' && entry.citizen.surname === 'Bulunamadı') {
+        const foundInDb = freshDatabase.find(c => c.tc === entry.citizen.tc);
+        if (foundInDb) {
+           // Update Firestore
+           try {
+             await updateDoc(doc(db, 'scanned_entries', entry.id), {
+               citizen: foundInDb
+             });
+           } catch(e) {
+             console.error("Error auto-updating citizen: ", e);
+           }
+        }
+      }
     });
   };
 
-  const handleAddUser = (user: User) => {
-    const newUsers = [...users, user];
-    setUsers(newUsers);
-    broadcast('UPDATE_USERS', newUsers);
+  const handleAddUser = async (user: User) => {
+    try {
+      await setDoc(doc(db, 'users', user.id), user);
+    } catch (e) {
+      console.error("Error adding user: ", e);
+    }
   }
 
-  const handleUpdateUser = (updatedUser: User) => {
-    const newUsers = users.map(u => u.id === updatedUser.id ? updatedUser : u);
-    setUsers(newUsers);
-    broadcast('UPDATE_USERS', newUsers);
+  const handleUpdateUser = async (updatedUser: User) => {
+    try {
+      await setDoc(doc(db, 'users', updatedUser.id), updatedUser);
+    } catch (e) {
+      console.error("Error updating user: ", e);
+    }
   };
 
   // --- Render Logic ---
@@ -315,7 +300,7 @@ const App: React.FC = () => {
 
   if (activeEventId) {
     const activeEvent = events.find(e => e.id === activeEventId);
-    if (!activeEvent) return <div>Hata: Etkinlik bulunamadı.</div>;
+    if (!activeEvent) return <div>Hata: Etkinlik bulunamadı veya silindi.</div>;
 
     const currentList = scannedEntries[activeEventId] || [];
 
