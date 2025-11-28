@@ -1,4 +1,3 @@
-
 import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -7,6 +6,10 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
  * Analyzes event statistics using Gemini Flash Lite for low-latency responses.
  */
 export async function generateEventAnalysis(eventsSummary: string): Promise<string> {
+  if (!process.env.API_KEY) {
+    return "API anahtarı bulunamadı. Lütfen yönetici ile iletişime geçin.";
+  }
+
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-lite',

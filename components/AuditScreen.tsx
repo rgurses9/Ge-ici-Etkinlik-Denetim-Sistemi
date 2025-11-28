@@ -12,9 +12,9 @@ interface WorkerRecord {
   status: 'active' | 'inactive' | 'expired';
 }
 
-// SECURITY: Retrieve IDs from environment variables to prevent exposing them in the source code.
-const SPREADSHEET_ID = typeof process !== 'undefined' ? process.env.REACT_APP_SPREADSHEET_ID || '1SU3otVPg8MVP77yfNdrIZ3Qlw5k7VoFg' : '1SU3otVPg8MVP77yfNdrIZ3Qlw5k7VoFg';
-const GID = typeof process !== 'undefined' ? process.env.REACT_APP_SHEET_GID || '893430437' : '893430437';
+// SECURITY: Retrieve IDs from environment variables.
+const SPREADSHEET_ID = (import.meta as any).env.VITE_SPREADSHEET_ID || '1SU3otVPg8MVP77yfNdrIZ3Qlw5k7VoFg';
+const GID = (import.meta as any).env.VITE_SHEET_GID || '893430437';
 const CSV_EXPORT_URL = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${GID}`;
 
 async function fetchSheetData(): Promise<WorkerRecord[]> {
