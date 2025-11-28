@@ -13,14 +13,16 @@ interface WorkerRecord {
 }
 
 // SECURITY: Retrieve IDs from environment variables.
-const SPREADSHEET_ID = (import.meta as any).env.VITE_SPREADSHEET_ID || '1SU3otVPg8MVP77yfNdrIZ3Qlw5k7VoFg';
-const GID = (import.meta as any).env.VITE_SHEET_GID || '893430437';
+const SPREADSHEET_ID = (import.meta as any).env.VITE_SPREADSHEET_ID ?? '1FD25QgwnS8AvtlZc-ZWzbF0wKW-4kxRhQft0VkST8Ng';
+const GID = (import.meta as any).env.VITE_SHEET_GID ?? '893430437';
 const CSV_EXPORT_URL = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${GID}`;
+// https://docs.google.com/spreadsheets/d/1FD25QgwnS8AvtlZc-ZWzbF0wKW-4kxRhQft0VkST8Ng/edit?gid=2114284548#gid=2114284548
 
 async function fetchSheetData(): Promise<WorkerRecord[]> {
   try {
     console.log('Fetching database from Google Sheets...');
     const response = await fetch(CSV_EXPORT_URL);
+    console.log(response)
     
     if (!response.ok) {
       console.error('Failed to fetch Google Sheet CSV:', response.statusText);
@@ -28,6 +30,7 @@ async function fetchSheetData(): Promise<WorkerRecord[]> {
     }
 
     const text = await response.text();
+    console.log(text)
 
     // Check for HTML response (usually means the sheet is not published to web/public)
     if (text.trim().startsWith('<!DOCTYPE html>') || text.includes('<html')) {
