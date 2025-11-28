@@ -1,4 +1,4 @@
-import * as firebaseApp from "firebase/app";
+import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -12,10 +12,7 @@ const firebaseConfig = {
   measurementId: "G-LKQQQ08VCM"
 };
 
-// Initialize Firebase
-// Using namespace import to resolve 'no exported member' error
-console.log("asd")
-const app = firebaseApp.initializeApp(firebaseConfig);
+const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 export { db };
