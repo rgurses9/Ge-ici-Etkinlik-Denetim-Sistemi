@@ -13,9 +13,8 @@ interface WorkerRecord {
 }
 
 // SECURITY: Retrieve IDs from environment variables to prevent exposing them in the source code.
-// In production, ensure REACT_APP_SPREADSHEET_ID and REACT_APP_SHEET_GID are set in your .env file.
-const SPREADSHEET_ID = process.env.REACT_APP_SPREADSHEET_ID || '1SU3otVPg8MVP77yfNdrIZ3Qlw5k7VoFg';
-const GID = process.env.REACT_APP_SHEET_GID || '893430437';
+const SPREADSHEET_ID = typeof process !== 'undefined' ? process.env.REACT_APP_SPREADSHEET_ID || '1SU3otVPg8MVP77yfNdrIZ3Qlw5k7VoFg' : '1SU3otVPg8MVP77yfNdrIZ3Qlw5k7VoFg';
+const GID = typeof process !== 'undefined' ? process.env.REACT_APP_SHEET_GID || '893430437' : '893430437';
 const CSV_EXPORT_URL = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${GID}`;
 
 async function fetchSheetData(): Promise<WorkerRecord[]> {
@@ -68,7 +67,6 @@ function parseCSV(csvText: string): WorkerRecord[] {
   const tcIndex = headers.findIndex(h => h.toUpperCase().includes('T.C.') || h.toUpperCase().includes('TC'));
   const nameIndex = headers.findIndex(h => h.toUpperCase().includes('ADI') && h.toUpperCase().includes('SOYADI'));
   const dateIndex = headers.findIndex(h => h.toUpperCase().includes('GEÇERLİLİK') || h.toUpperCase().includes('TARİH'));
-  // const statusIndex = headers.findIndex(h => h.toUpperCase().includes('DURUM')); // No longer relying on Status column text
 
   if (tcIndex === -1) {
     console.warn('Could not find TC column');
@@ -99,14 +97,12 @@ function parseCSV(csvText: string): WorkerRecord[] {
     const expiryDateObj = parseDate(expiryDateStr);
 
     if (expiryDateObj) {
-      // Check if expiry date is today or in the future
       if (expiryDateObj >= today) {
         status = 'active';
       } else {
         status = 'expired';
       }
     } else {
-      // Invalid date or missing date -> treat as inactive
       status = 'inactive';
     }
 
@@ -118,7 +114,6 @@ function parseCSV(csvText: string): WorkerRecord[] {
     });
   }
 
-  console.log(`Successfully parsed ${records.length} records.`);
   return records;
 }
 
@@ -173,7 +168,7 @@ interface AuditScreenProps {
   currentUser: User;
   onExit: () => void;
   onFinish: (duration: string) => void;
-  onScan: (entry: ScanEntry) => void;
+  onScan: (entry: ScanEntry) => void; // This calls Firestore write
   onBulkScan: (entries: ScanEntry[]) => void;
   onDelete: (entryId: string) => void;
   scannedList: ScanEntry[];
@@ -214,7 +209,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     inputRef.current?.focus();
   }, []);
 
-  // Fetch from Google Sheets using provided logic
+  // Fetch from Google Sheets
   useEffect(() => {
     const loadData = async () => {
       setDbStatus('LOADING');
@@ -222,9 +217,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
         const workerRecords = await fetchSheetData();
         
         if (workerRecords.length > 0) {
-          // Map WorkerRecord to Citizen
           const onlineCitizens: Citizen[] = workerRecords.map(r => {
-            // Simple split for name/surname since sheet has fullName
             const parts = r.fullName.trim().split(' ');
             let surname = '';
             let name = r.fullName;
@@ -242,15 +235,11 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
             };
           });
 
-          // Merge with mock DB so existing tests (11111...) still work
           const mergedDB = [...onlineCitizens, ...MOCK_CITIZEN_DB];
           setDatabase(mergedDB);
           setDbStatus('READY');
-          
-          // Notify parent app to update any existing "Not Found" records
           onDatabaseUpdate(onlineCitizens);
         } else {
-          // Fallback to mock only if online empty or failed to parse
           setDbStatus('READY');
         }
       } catch (e) {
@@ -262,7 +251,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     loadData();
   }, []);
 
-  const performScan = (tc: string) => {
+  const performScan = async (tc: string) => {
     const trimmedTC = tc.trim();
 
     if (!trimmedTC) return;
@@ -272,14 +261,13 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       return;
     }
 
-    // Check if Target Reached
     if (scannedList.length >= event.targetCount) {
         setLastScanResult({ status: 'ERROR', message: 'Hedef kişi sayısına ulaşıldı. Daha fazla kayıt yapılamaz. Denetlemeyi bitir' });
         setTcInput('');
         return;
     }
 
-    // 1. Check if already scanned in THIS session
+    // Check existing in list
     const alreadyScanned = scannedList.find(s => s.citizen.tc === trimmedTC);
     if (alreadyScanned) {
       setLastScanResult({ status: 'ERROR', message: 'Bu kişi zaten listeye eklendi.' });
@@ -287,32 +275,28 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       return;
     }
 
-    // 2. Cross-Event Validation
+    // Cross-Event Validation
     let conflictError = '';
     
-    // Check all scanned entries from all events
-    for (const [otherEventId, entries] of Object.entries(allScannedEntries)) {
-       const entriesList = entries as ScanEntry[];
-       const foundEntry = entriesList.find(e => e.citizen.tc === trimmedTC);
-       if (foundEntry) {
-         const otherEvent = allEvents.find(e => e.id === otherEventId);
+    // Convert Record<string, ScanEntry[]> to array of ScanEntry for checking
+    const allEntriesFlat = Object.values(allScannedEntries).flat() as ScanEntry[];
+
+    for (const foundEntry of allEntriesFlat) {
+       if (foundEntry.citizen.tc === trimmedTC) {
+         const otherEvent = allEvents.find(e => e.id === foundEntry.eventId);
          if (!otherEvent) continue;
 
-         // Rule 1: Cannot be in another ACTIVE event
          if (otherEvent.status === 'ACTIVE' && otherEvent.id !== event.id) {
            conflictError = `Bu TC ${otherEvent.name} etkinliğinde okutuldu. O denetleme personeli ile iletişime geç.`;
            break;
          }
 
-         // Rule 2: Cannot be in ANY event (Active or Passive) if dates overlap with current event
          const currentStart = new Date(event.startDate).getTime();
          const currentEnd = new Date(event.endDate).getTime();
          const otherStart = new Date(otherEvent.startDate).getTime();
          const otherEnd = new Date(otherEvent.endDate).getTime();
 
-         // Check overlap logic: (StartA <= EndB) and (EndA >= StartB)
          if ((currentStart <= otherEnd) && (currentEnd >= otherStart)) {
-           // Format times for message
            const startTime = new Date(otherEvent.startDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
            const endTime = new Date(otherEvent.endDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
            conflictError = `Bu kimlik ${otherEvent.name} etkinliğinde ${startTime} - ${endTime} arasında çalışıyor, görev alamaz. O denetleme personeli ile iletişime geç.`;
@@ -327,22 +311,20 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       return;
     }
 
-    // Lookup in Loaded DB
+    // DB Lookup
     let citizen = database.find(c => c.tc === trimmedTC);
     let message = '';
     let status: 'SUCCESS' | 'WARNING' = 'SUCCESS';
 
     if (citizen) {
-       // Found in DB
        message = 'Kayıt başarı ile gerçekleştirildi';
        status = 'SUCCESS';
     } else {
-       // If not found in DB, create a temporary citizen record as requested
        citizen = {
          tc: trimmedTC,
          name: 'Veri Tabanında',
          surname: 'Bulunamadı',
-         validityDate: '-' // Unknown date
+         validityDate: '-' 
        };
        message = 'Kimlik kartının geçerlilik süresini kontrol et';
        status = 'WARNING'; 
@@ -353,9 +335,10 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       eventId: event.id,
       citizen: citizen,
       timestamp: new Date().toLocaleTimeString(),
-      recordedBy: currentUser.username // Record who scanned this
+      recordedBy: currentUser.username
     };
     
+    // Fire and forget (Optimistic UI handled by Firestore listener in App.tsx)
     onScan(newEntry);
     setLastScanResult({ status: status, message: message, citizen });
     setTcInput('');
@@ -368,11 +351,9 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Only allow numbers
     const val = e.target.value.replace(/\D/g, '');
     setTcInput(val);
     
-    // Auto-scan if length is 11
     if (val.length === 11) {
       performScan(val);
     }
@@ -382,7 +363,6 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Reset file input value to allow re-uploading the same file if needed
     e.target.value = '';
 
     const XLSX = await import('xlsx');
@@ -395,17 +375,10 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       const ws = wb.Sheets[wsname];
       const data: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
 
-      // We expect the first column to be TC.
-      // Filter out empty rows or non-numeric cells that aren't 11 digits
-      // Batch validate
-      
       const newEntries: ScanEntry[] = [];
       let successCount = 0;
       let failCount = 0;
       let errorMsg = '';
-
-      // Skip header row if exists (heuristic: check if first cell is not a number)
-      // Or just iterate all and validate.
       
       const currentTimestamp = new Date().toLocaleTimeString();
       let currentScannedCount = scannedList.length;
@@ -415,40 +388,35 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
         const row = data[i];
         if (row.length === 0) continue;
         
-        // Find first cell with data, treat as TC
         const tcVal = row.find(cell => cell !== undefined && cell !== null && cell !== '');
         if (!tcVal) continue;
         
         const tc = String(tcVal).trim().replace(/\D/g, '');
 
-        if (tc.length !== 11) continue; // Invalid TC
+        if (tc.length !== 11) continue;
 
-        // Stop if target reached
         if (currentScannedCount + newEntries.length >= event.targetCount) {
           errorMsg = 'Hedef limite ulaşıldı.';
           break;
         }
 
-        // --- VALIDATION LOGIC REUSED ---
-
-        // 1. Check duplicate in EXISTING list
+        // 1. Duplicate in List
         if (scannedList.find(s => s.citizen.tc === tc)) {
           failCount++;
           continue;
         }
 
-        // 2. Check duplicate in CURRENT BATCH
+        // 2. Duplicate in Batch
         if (newEntries.find(s => s.citizen.tc === tc)) {
-           continue; // Skip batch duplicate
+           continue;
         }
 
         // 3. Cross-Event Conflict
         let hasConflict = false;
-        for (const [otherEventId, entries] of Object.entries(allScannedEntries)) {
-            const entriesList = entries as ScanEntry[];
-            const foundEntry = entriesList.find(e => e.citizen.tc === tc);
-            if (foundEntry) {
-              const otherEvent = allEvents.find(e => e.id === otherEventId);
+        const allEntriesFlat = Object.values(allScannedEntries).flat() as ScanEntry[];
+        for (const foundEntry of allEntriesFlat) {
+            if (foundEntry.citizen.tc === tc) {
+              const otherEvent = allEvents.find(e => e.id === foundEntry.eventId);
               if (!otherEvent) continue;
 
               if (otherEvent.status === 'ACTIVE' && otherEvent.id !== event.id) {
@@ -510,7 +478,6 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   };
 
   const exportToExcel = async () => {
-    // Dynamic import to avoid conflict if I removed top level import
     const XLSX = await import('xlsx');
     
     const dataToExport = scannedList.map(item => {
@@ -534,11 +501,9 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   };
 
   const handleFinishAudit = async () => {
-    // Export Excel automatically before showing summary
     await exportToExcel();
 
     const diff = Date.now() - startTime;
-    // Format to HH:MM:SS
     const hours = Math.floor(diff / 3600000);
     const minutes = Math.floor((diff % 3600000) / 60000);
     const seconds = Math.floor((diff % 60000) / 1000);
@@ -554,32 +519,24 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   };
 
   const checkWorkStatus = (dateStr: string) => {
-    // If no date or explicit hyphen
     if (!dateStr || dateStr === '-' || dateStr.trim() === '') {
       return { text: 'BELİRSİZ', color: 'text-gray-500', bg: 'bg-gray-100 dark:bg-gray-700 dark:text-gray-400' };
     }
 
     let targetDate: Date | null = null;
-
-    // Handle YYYY-MM-DD
     if (dateStr.includes('-') && dateStr.length === 10) {
        targetDate = new Date(dateStr);
-    } 
-    // Handle DD.MM.YYYY
-    else if (dateStr.includes('.')) {
+    } else if (dateStr.includes('.')) {
       const parts = dateStr.split('.');
       if (parts.length === 3) {
-        // new Date(year, monthIndex, day)
         targetDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
       }
     }
 
     if (!targetDate || isNaN(targetDate.getTime())) {
-       // Could not parse
        return { text: 'TARİH HATALI', color: 'text-gray-500', bg: 'bg-gray-100 dark:bg-gray-700 dark:text-gray-400' };
     }
 
-    // Compare with today (start of day)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -643,7 +600,6 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
              <UserIcon size={12} />
              {currentUser.username}
            </div>
-           {/* Exit just closes the window without finishing the event state */}
            <button onClick={onExit} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
              <X size={20} />
            </button>
@@ -669,7 +625,6 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
         {/* Scanner Area */}
         <div className="w-full bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-5 mb-4">
           <div className="flex flex-col items-center">
-            {/* Removed Camera Icon */}
             <h2 className="text-sm font-medium text-gray-900 dark:text-white mb-4">TC Kimlik Numarası Girin</h2>
             
             <form onSubmit={handleManualScan} className="flex w-full max-w-lg gap-2">
@@ -680,7 +635,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
                 value={tcInput}
                 onChange={handleInputChange}
                 className="flex-1 bg-gray-700 dark:bg-gray-700 text-white text-sm sm:text-base font-mono placeholder-gray-400 border-none rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
-                style={{ backgroundColor: '#374151' }} // Force dark bg for scanner input
+                style={{ backgroundColor: '#374151' }}
                 placeholder="11 haneli TC No"
               />
               <button 
@@ -690,7 +645,6 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
                 Okut
               </button>
               
-              {/* File Upload Button - Only for Admins */}
               {isAdmin && (
                 <>
                   <input 
@@ -776,7 +730,6 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                {/* Display list in chronological order (newest at bottom) */}
                 {scannedList.map((entry, index) => {
                   const status = checkWorkStatus(entry.citizen.validityDate);
                   return (
@@ -826,7 +779,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
       </div>
 
-      {/* Floating Chat Icon (Decorational) */}
+      {/* Floating Chat Icon */}
       <button className="fixed bottom-4 right-4 bg-white dark:bg-gray-800 p-2.5 rounded-full shadow-lg border border-gray-100 dark:border-gray-700 text-primary-600 dark:text-primary-400 hover:bg-gray-50 dark:hover:bg-gray-700">
         <MessageSquare size={20} />
       </button>
