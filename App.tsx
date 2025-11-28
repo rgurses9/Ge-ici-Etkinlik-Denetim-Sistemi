@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import Login from './components/Login';
 import AdminDashboard from './components/AdminDashboard';
@@ -15,6 +14,28 @@ const App: React.FC = () => {
 
   const [events, setEvents] = useState<Event[]>(INITIAL_EVENTS);
   const [users, setUsers] = useState<User[]>(INITIAL_USERS);
+  
+  // Theme State
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    // Check local storage or preference
+    if (typeof window !== 'undefined') {
+       return localStorage.getItem('geds_theme') === 'dark';
+    }
+    return false;
+  });
+
+  // Apply Theme
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('geds_theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('geds_theme', 'light');
+    }
+  }, [isDarkMode]);
+
+  const toggleTheme = () => setIsDarkMode(!isDarkMode);
   
   // Audit State
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
@@ -282,7 +303,14 @@ const App: React.FC = () => {
   // --- Render Logic ---
 
   if (!session.isAuthenticated || !session.currentUser) {
-    return <Login users={users} onLogin={handleLogin} />;
+    return (
+      <Login 
+        users={users} 
+        onLogin={handleLogin} 
+        isDarkMode={isDarkMode}
+        onToggleTheme={toggleTheme}
+      />
+    );
   }
 
   if (activeEventId) {
@@ -304,6 +332,7 @@ const App: React.FC = () => {
         scannedList={currentList}
         allScannedEntries={scannedEntries}
         onDatabaseUpdate={handleDatabaseUpdate}
+        isDarkMode={isDarkMode}
       />
     );
   }
@@ -321,6 +350,8 @@ const App: React.FC = () => {
       onReactivateEvent={handleReactivateEvent}
       onAddUser={handleAddUser}
       onUpdateUser={handleUpdateUser}
+      isDarkMode={isDarkMode}
+      onToggleTheme={toggleTheme}
     />
   );
 };
