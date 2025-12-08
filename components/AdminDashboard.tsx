@@ -679,7 +679,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <p className="text-gray-500 dark:text-gray-400 mb-6 text-sm">
                 <strong>{eventToDelete.name}</strong> etkinliğinde kayıtlı okutmalar mevcut. Silerseniz bu veriler kaybolabilir.
                 <br /><br />
-                Denetleme başladı, yine de silmek istiyor musunuz?
+                Denetleme başladı, silmeye emin misin?
               </p>
 
               <div className="flex gap-3">
@@ -1106,6 +1106,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400">Ad Soyad</th>
                       <th className="hidden sm:table-cell px-6 py-3 font-medium text-gray-500 dark:text-gray-400">Durum</th>
                       <th className="hidden sm:table-cell px-6 py-3 font-medium text-gray-500 dark:text-gray-400">Saat</th>
+                      <th className="hidden sm:table-cell px-6 py-3 font-medium text-gray-500 dark:text-gray-400">Kaydeden</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -1122,6 +1123,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </span>
                           </td>
                           <td className="hidden sm:table-cell px-6 py-3 text-gray-500 dark:text-gray-400">{entry.timestamp}</td>
+                          <td className="hidden sm:table-cell px-6 py-3 text-gray-500 dark:text-gray-400">{entry.recordedBy}</td>
                         </tr>
                       )
                     })}
