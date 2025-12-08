@@ -5,14 +5,14 @@ import AuditScreen from './components/AuditScreen';
 import { User, Event, ScanEntry, SessionState, Citizen } from './types';
 import { INITIAL_USERS, INITIAL_EVENTS } from './constants';
 import { db } from './firebase';
-import { 
-  collection, 
-  onSnapshot, 
-  doc, 
-  setDoc, 
-  updateDoc, 
-  deleteDoc, 
-  query, 
+import {
+  collection,
+  onSnapshot,
+  doc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  query,
   orderBy,
   writeBatch
 } from 'firebase/firestore';
@@ -27,11 +27,11 @@ const App: React.FC = () => {
   const [events, setEvents] = useState<Event[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [scannedEntries, setScannedEntries] = useState<Record<string, ScanEntry[]>>({});
-  
+
   // Theme State
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
-       return localStorage.getItem('geds_theme') === 'dark';
+      return localStorage.getItem('geds_theme') === 'dark';
     }
     return false;
   });
@@ -48,7 +48,7 @@ const App: React.FC = () => {
   }, [isDarkMode]);
 
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
-  
+
   // Audit State
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
 
@@ -56,9 +56,10 @@ const App: React.FC = () => {
 
   // 1. Users Subscription & Initial Seeding
   useEffect(() => {
-    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+    const q = query(collection(db, 'users'), orderBy('username', 'asc'));
+    const unsubUsers = onSnapshot(q, (snapshot) => {
       const fetchedUsers: User[] = snapshot.docs.map(doc => doc.data() as User);
-      
+
       // Seed Initial Users if DB is empty
       if (fetchedUsers.length === 0) {
         console.log("Seeding initial users to Firestore...");
@@ -77,7 +78,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const unsubEvents = onSnapshot(collection(db, 'events'), (snapshot) => {
       const fetchedEvents: Event[] = snapshot.docs.map(doc => doc.data() as Event);
-      
+
       // Seed Initial Events if DB is empty
       if (fetchedEvents.length === 0) {
         console.log("Seeding initial events to Firestore...");
@@ -94,10 +95,10 @@ const App: React.FC = () => {
 
   // 3. Scanned Entries Subscription
   useEffect(() => {
-    const q = query(collection(db, 'scanned_entries'), orderBy('timestamp', 'asc'));
+    const q = query(collection(db, 'scanned_entries'), orderBy('timestamp', 'desc'));
     const unsubEntries = onSnapshot(q, (snapshot) => {
       const fetchedEntries: ScanEntry[] = snapshot.docs.map(doc => doc.data() as ScanEntry);
-      
+
       // Group by eventId
       const grouped: Record<string, ScanEntry[]> = {};
       fetchedEntries.forEach(entry => {
@@ -106,7 +107,7 @@ const App: React.FC = () => {
         }
         grouped[entry.eventId].push(entry);
       });
-      
+
       setScannedEntries(grouped);
     });
 
@@ -186,7 +187,7 @@ const App: React.FC = () => {
     try {
       // 1. Add Entry
       await setDoc(doc(db, 'scanned_entries', entry.id), entry);
-      
+
       // 2. Increment Event Count (Optimistic or Transactional could be better, but simple update works here)
       const event = events.find(e => e.id === entry.eventId);
       if (event) {
@@ -202,10 +203,10 @@ const App: React.FC = () => {
   const handleBulkScan = async (newEntries: ScanEntry[]) => {
     if (newEntries.length === 0) return;
     const eventId = newEntries[0].eventId;
-    
+
     try {
       const batch = writeBatch(db);
-      
+
       // Add all entries
       newEntries.forEach(entry => {
         const ref = doc(db, 'scanned_entries', entry.id);
@@ -233,7 +234,7 @@ const App: React.FC = () => {
     try {
       // 1. Delete Entry
       await deleteDoc(doc(db, 'scanned_entries', entryId));
-      
+
       // 2. Decrement Event Count
       const event = events.find(e => e.id === activeEventId);
       if (event) {
@@ -250,20 +251,20 @@ const App: React.FC = () => {
     // This logic handles retroactive updates for "Not Found" records
     // We iterate through all scanned entries in Firestore that have name "Veri Tabanında"
     // and if found in fresh DB, we update them.
-    
+
     // Flatten all entries
     Object.values(scannedEntries).flat().forEach(async (entry) => {
       if (entry.citizen.name === 'Veri Tabanında' && entry.citizen.surname === 'Bulunamadı') {
         const foundInDb = freshDatabase.find(c => c.tc === entry.citizen.tc);
         if (foundInDb) {
-           // Update Firestore
-           try {
-             await updateDoc(doc(db, 'scanned_entries', entry.id), {
-               citizen: foundInDb
-             });
-           } catch(e) {
-             console.error("Error auto-updating citizen: ", e);
-           }
+          // Update Firestore
+          try {
+            await updateDoc(doc(db, 'scanned_entries', entry.id), {
+              citizen: foundInDb
+            });
+          } catch (e) {
+            console.error("Error auto-updating citizen: ", e);
+          }
         }
       }
     });
@@ -285,13 +286,29 @@ const App: React.FC = () => {
     }
   };
 
+  const handleDeleteUser = async (userId: string) => {
+    try {
+      await deleteDoc(doc(db, 'users', userId));
+    } catch (e) {
+      console.error("Error deleting user: ", e);
+    }
+  };
+
+  const handleUpdateEvent = async (updatedEvent: Event) => {
+    try {
+      await setDoc(doc(db, 'events', updatedEvent.id), updatedEvent);
+    } catch (e) {
+      console.error("Error updating event: ", e);
+    }
+  };
+
   // --- Render Logic ---
 
   if (!session.isAuthenticated || !session.currentUser) {
     return (
-      <Login 
-        users={users} 
-        onLogin={handleLogin} 
+      <Login
+        users={users}
+        onLogin={handleLogin}
         isDarkMode={isDarkMode}
         onToggleTheme={toggleTheme}
       />
@@ -305,11 +322,11 @@ const App: React.FC = () => {
     const currentList = scannedEntries[activeEventId] || [];
 
     return (
-      <AuditScreen 
-        event={activeEvent} 
+      <AuditScreen
+        event={activeEvent}
         allEvents={events}
         currentUser={session.currentUser}
-        onExit={handleEndAudit} 
+        onExit={handleEndAudit}
         onFinish={handleFinishAndCloseAudit}
         onScan={handleScan}
         onBulkScan={handleBulkScan}
@@ -323,7 +340,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <AdminDashboard 
+    <AdminDashboard
       currentUser={session.currentUser}
       events={events}
       users={users}
@@ -331,10 +348,12 @@ const App: React.FC = () => {
       onLogout={handleLogout}
       onStartAudit={handleStartAudit}
       onAddEvent={handleAddEvent}
+      onUpdateEvent={handleUpdateEvent}
       onDeleteEvent={handleDeleteEvent}
       onReactivateEvent={handleReactivateEvent}
       onAddUser={handleAddUser}
       onUpdateUser={handleUpdateUser}
+      onDeleteUser={handleDeleteUser}
       isDarkMode={isDarkMode}
       onToggleTheme={toggleTheme}
     />
