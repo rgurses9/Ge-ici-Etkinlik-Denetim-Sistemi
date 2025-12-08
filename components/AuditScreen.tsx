@@ -1,7 +1,7 @@
-import React, {useEffect, useRef, useState} from 'react';
-import {Citizen, Event, ScanEntry, User, UserRole} from '../types';
-import {MOCK_CITIZEN_DB} from '../constants';
-import {AlertCircle, CheckCircle, Clock, Database, Download, Loader2, MessageSquare, Trash2, Upload, User as UserIcon, X} from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Citizen, Event, ScanEntry, User, UserRole } from '../types';
+import { MOCK_CITIZEN_DB } from '../constants';
+import { AlertCircle, CheckCircle, Clock, Database, Download, Loader2, MessageSquare, Trash2, Upload, User as UserIcon, X } from 'lucide-react';
 
 // --- Provided CSV Parsing Logic ---
 
@@ -167,6 +167,8 @@ function parseCSVRow(row: string): string[] {
   return result;
 }
 
+
+
 // --- Component ---
 
 interface AuditScreenProps {
@@ -199,12 +201,23 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   isDarkMode
 }) => {
   const [tcInput, setTcInput] = useState('');
-  const [lastScanResult, setLastScanResult] = useState<{ status: 'SUCCESS' | 'ERROR' | 'WARNING' | 'IDLE', message: string, citizen?: Citizen }>({status: 'IDLE', message: ''});
+  const [lastScanResult, setLastScanResult] = useState<{ status: 'SUCCESS' | 'ERROR' | 'WARNING' | 'IDLE', message: string, citizen?: Citizen }>({ status: 'IDLE', message: '' });
   const [database, setDatabase] = useState<Citizen[]>(MOCK_CITIZEN_DB);
   const [dbStatus, setDbStatus] = useState<'LOADING' | 'READY' | 'ERROR'>('LOADING');
   const [startTime] = useState(Date.now());
   const [showSummary, setShowSummary] = useState(false);
   const [durationStr, setDurationStr] = useState('');
+
+  // Completion Warning State (Moved Inside)
+  const [showCompletionWarning, setShowCompletionWarning] = useState(false);
+  const prevCountRef = useRef(scannedList.length);
+
+  useEffect(() => {
+    if (scannedList.length === event.targetCount && scannedList.length > prevCountRef.current) {
+      setShowCompletionWarning(true);
+    }
+    prevCountRef.current = scannedList.length;
+  }, [scannedList.length, event.targetCount]);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -266,12 +279,12 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     }
 
     if (trimmedTC.length !== 11) {
-      setLastScanResult({status: 'ERROR', message: 'TC Kimlik Numarası 11 haneli olmalıdır.'});
+      setLastScanResult({ status: 'ERROR', message: 'TC Kimlik Numarası 11 haneli olmalıdır.' });
       return;
     }
 
     if (scannedList.length >= event.targetCount) {
-      setLastScanResult({status: 'ERROR', message: 'Hedef kişi sayısına ulaşıldı. Daha fazla kayıt yapılamaz. Denetlemeyi bitir'});
+      setLastScanResult({ status: 'ERROR', message: 'Hedef kişi sayısına ulaşıldı. Daha fazla kayıt yapılamaz. Denetlemeyi bitir' });
       setTcInput('');
       return;
     }
@@ -279,7 +292,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     // Check existing in list
     const alreadyScanned = scannedList.find(s => s.citizen.tc === trimmedTC);
     if (alreadyScanned) {
-      setLastScanResult({status: 'ERROR', message: 'Bu kişi zaten listeye eklendi.'});
+      setLastScanResult({ status: 'ERROR', message: 'Bu kişi zaten listeye eklendi.' });
       setTcInput('');
       return;
     }
@@ -308,8 +321,8 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
         const otherEnd = new Date(otherEvent.endDate).getTime();
 
         if ((currentStart <= otherEnd) && (currentEnd >= otherStart)) {
-          const startTime = new Date(otherEvent.startDate).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
-          const endTime = new Date(otherEvent.endDate).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+          const startTime = new Date(otherEvent.startDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const endTime = new Date(otherEvent.endDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           conflictError = `Bu kimlik ${otherEvent.name} etkinliğinde ${startTime} - ${endTime} arasında çalışıyor, görev alamaz. O denetleme personeli ile iletişime geç.`;
           break;
         }
@@ -317,7 +330,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     }
 
     if (conflictError) {
-      setLastScanResult({status: 'ERROR', message: conflictError});
+      setLastScanResult({ status: 'ERROR', message: conflictError });
       setTcInput('');
       return;
     }
@@ -351,7 +364,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
     // Fire and forget (Optimistic UI handled by Firestore listener in App.tsx)
     onScan(newEntry);
-    setLastScanResult({status: status, message: message, citizen});
+    setLastScanResult({ status: status, message: message, citizen });
     setTcInput('');
     inputRef.current?.focus();
   };
@@ -383,10 +396,10 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
     reader.onload = (evt) => {
       const bstr = evt.target?.result;
-      const wb = XLSX.read(bstr, {type: 'binary'});
+      const wb = XLSX.read(bstr, { type: 'binary' });
       const wsname = wb.SheetNames[0];
       const ws = wb.Sheets[wsname];
-      const data: any[][] = XLSX.utils.sheet_to_json(ws, {header: 1});
+      const data: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
 
       const newEntries: ScanEntry[] = [];
       let successCount = 0;
@@ -543,7 +556,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
   const checkWorkStatus = (dateStr: string) => {
     if (!dateStr || dateStr === '-' || dateStr.trim() === '') {
-      return {text: 'BELİRSİZ', color: 'text-gray-500', bg: 'bg-gray-100 dark:bg-gray-700 dark:text-gray-400'};
+      return { text: 'BELİRSİZ', color: 'text-gray-500', bg: 'bg-gray-100 dark:bg-gray-700 dark:text-gray-400' };
     }
 
     let targetDate: Date | null = null;
@@ -557,16 +570,16 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     }
 
     if (!targetDate || isNaN(targetDate.getTime())) {
-      return {text: 'TARİH HATALI', color: 'text-gray-500', bg: 'bg-gray-100 dark:bg-gray-700 dark:text-gray-400'};
+      return { text: 'TARİH HATALI', color: 'text-gray-500', bg: 'bg-gray-100 dark:bg-gray-700 dark:text-gray-400' };
     }
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     if (targetDate >= today) {
-      return {text: 'ÇALIŞIR', color: 'text-green-700 dark:text-green-400', bg: 'bg-green-100 dark:bg-green-900/30'};
+      return { text: 'ÇALIŞIR', color: 'text-green-700 dark:text-green-400', bg: 'bg-green-100 dark:bg-green-900/30' };
     } else {
-      return {text: 'ÇALIŞAMAZ', color: 'text-red-700 dark:text-red-400', bg: 'bg-red-100 dark:bg-red-900/30'};
+      return { text: 'ÇALIŞAMAZ', color: 'text-red-700 dark:text-red-400', bg: 'bg-red-100 dark:bg-red-900/30' };
     }
   };
 
@@ -576,30 +589,30 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   if (showSummary) {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-              <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl text-center">
-                  <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <CheckCircle size={32} />
-                  </div>
-                  <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Denetleme Tamamlandı</h2>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-6">Etkinlik denetimi başarıyla sonlandırıldı ve Excel dosyası indirildi.</p>
-                  
-                  <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 mb-6">
-                      <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 flex items-center justify-center gap-1">
-                          <Clock size={12} />
-                          Tamamlama Süresi
-                      </div>
-                      <div className="text-2xl font-mono font-bold text-gray-800 dark:text-white">
-                          {durationStr}
-                      </div>
-                  </div>
-
-                  <button
-                    onClick={() => onFinish(durationStr)} className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-2.5 px-6 rounded-xl transition text-sm"
-                  >
-                      Ana Ekrana Dön
-                  </button>
-              </div>
+        <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl text-center">
+          <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center mx-auto mb-4">
+            <CheckCircle size={32} />
           </div>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Denetleme Tamamlandı</h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-6">Etkinlik denetimi başarıyla sonlandırıldı ve Excel dosyası indirildi.</p>
+
+          <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 mb-6">
+            <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 flex items-center justify-center gap-1">
+              <Clock size={12} />
+              Tamamlama Süresi
+            </div>
+            <div className="text-2xl font-mono font-bold text-gray-800 dark:text-white">
+              {durationStr}
+            </div>
+          </div>
+
+          <button
+            onClick={() => onFinish(durationStr)} className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-2.5 px-6 rounded-xl transition text-sm"
+          >
+            Ana Ekrana Dön
+          </button>
+        </div>
+      </div>
     )
   }
 
@@ -610,49 +623,49 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
         <div>
           <h1 className="text-base font-bold text-gray-900 dark:text-white truncate max-w-xs sm:max-w-lg">{event.name}</h1>
           <div className="flex items-center gap-2 mt-0.5">
-             <span className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
-                {dbStatus === 'LOADING' && <><Loader2 size={10} className="animate-spin" /> Veritabanı Yükleniyor...</>}
-               {dbStatus === 'READY' && <><CheckCircle size={10} className="text-green-500 dark:text-green-400" /> Veritabanı Güncel</>}
-               {dbStatus === 'ERROR' && <><Database size={10} className="text-orange-500 dark:text-orange-400" /> Çevrimdışı Mod (Mock)</>}
-             </span>
+            <span className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+              {dbStatus === 'LOADING' && <><Loader2 size={10} className="animate-spin" /> Veritabanı Yükleniyor...</>}
+              {dbStatus === 'READY' && <><CheckCircle size={10} className="text-green-500 dark:text-green-400" /> Veritabanı Güncel</>}
+              {dbStatus === 'ERROR' && <><Database size={10} className="text-orange-500 dark:text-orange-400" /> Çevrimdışı Mod (Mock)</>}
+            </span>
           </div>
         </div>
         <div className="flex items-center gap-3">
-           <div className="hidden sm:flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-2.5 py-1 rounded-full">
-             <UserIcon size={12} />
-             {currentUser.username}
-           </div>
-           <button onClick={onExit} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-             <X size={20} />
-           </button>
+          <div className="hidden sm:flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-2.5 py-1 rounded-full">
+            <UserIcon size={12} />
+            {currentUser.username}
+          </div>
+          <button onClick={onExit} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+            <X size={20} />
+          </button>
         </div>
       </div>
 
       {/* Progress Bar */}
       <div className="bg-gray-100 dark:bg-gray-800 px-4 py-1.5 border-b border-gray-200 dark:border-gray-700">
-         <div className="flex justify-between text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mb-1">
-            <span>İlerleme</span>
-            <span>{scannedList.length} / {event.targetCount} (%{progressPercentage})</span>
-         </div>
-         <div className="w-full bg-gray-300 dark:bg-gray-600 rounded-full h-2 overflow-hidden">
-            <div
-              className="bg-blue-600 h-2 rounded-full transition-all duration-500" style={{width: `${progressPercentage}%`}}
-            ></div>
-         </div>
+        <div className="flex justify-between text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mb-1">
+          <span>İlerleme</span>
+          <span>{scannedList.length} / {event.targetCount} (%{progressPercentage})</span>
+        </div>
+        <div className="w-full bg-gray-300 dark:bg-gray-600 rounded-full h-2 overflow-hidden">
+          <div
+            className="bg-blue-600 h-2 rounded-full transition-all duration-500" style={{ width: `${progressPercentage}%` }}
+          ></div>
+        </div>
       </div>
 
       <div className="flex-1 max-w-4xl mx-auto w-full p-4 flex flex-col items-center">
-        
+
         {/* Scanner Area */}
         <div className="w-full bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-5 mb-4">
           <div className="flex flex-col items-center">
             <h2 className="text-sm font-medium text-gray-900 dark:text-white mb-4">TC Kimlik Numarası Girin</h2>
-            
+
             <form onSubmit={handleManualScan} className="flex w-full max-w-lg gap-2">
               <input
                 ref={inputRef} type="text" maxLength={11} value={tcInput} onChange={handleInputChange}
                 className="flex-1 bg-gray-700 dark:bg-gray-700 text-white text-sm sm:text-base font-mono placeholder-gray-400 border-none rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
-                style={{backgroundColor: '#374151'}} placeholder="11 haneli TC No"
+                style={{ backgroundColor: '#374151' }} placeholder="11 haneli TC No"
               />
               <button
                 type="submit" className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-4 py-2 text-sm rounded-lg transition"
@@ -678,19 +691,18 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
             {/* Status Message */}
             {lastScanResult.status !== 'IDLE' && (
               <div
-                className={`mt-3 flex items-center gap-2 px-3 py-2 rounded-lg w-full max-w-lg ${
-                  lastScanResult.status === 'SUCCESS'
+                className={`mt-3 flex items-center gap-2 px-3 py-2 rounded-lg w-full max-w-lg ${lastScanResult.status === 'SUCCESS'
                   ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800'
                   : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800'
-                }`}
+                  }`}
               >
                 {lastScanResult.status === 'SUCCESS' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
                 <div className="flex-1">
                   <p className="text-xs font-bold">{lastScanResult.message}</p>
                   {lastScanResult.citizen && (
                     <div className="text-xs opacity-90 mt-0.5">
-                       <p>{lastScanResult.citizen.name} {lastScanResult.citizen.surname}</p>
-                       <p className="font-mono mt-0.5 text-gray-600 dark:text-gray-300 scale-90 origin-left">Geçerlilik Tarihi: {lastScanResult.citizen.validityDate}</p>
+                      <p>{lastScanResult.citizen.name} {lastScanResult.citizen.surname}</p>
+                      <p className="font-mono mt-0.5 text-gray-600 dark:text-gray-300 scale-90 origin-left">Geçerlilik Tarihi: {lastScanResult.citizen.validityDate}</p>
                     </div>
                   )}
                 </div>
@@ -710,11 +722,10 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
               <Download size={14} /> Excel'e Aktar
             </button>
             <button
-              onClick={handleFinishAudit} disabled={!isTargetReached} className={`text-white px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-              isTargetReached
-              ? 'bg-red-600 hover:bg-red-700'
-              : 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed opacity-70'
-            }`}
+              onClick={handleFinishAudit} disabled={!isTargetReached} className={`text-white px-3 py-1.5 rounded-lg text-xs font-medium transition ${isTargetReached
+                ? 'bg-red-600 hover:bg-red-700'
+                : 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed opacity-70'
+                }`}
             >
               Denetimi Bitir
             </button>
@@ -751,9 +762,9 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
                         {entry.citizen.validityDate}
                       </td>
                       <td className="px-3 py-1.5">
-                         <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${status.bg} ${status.color}`}>
-                           {status.text}
-                         </span>
+                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${status.bg} ${status.color}`}>
+                          {status.text}
+                        </span>
                       </td>
                       <td className="px-3 py-1.5 text-gray-500 dark:text-gray-400 text-right">{entry.timestamp}</td>
                       <td className="px-3 py-1.5 text-gray-500 dark:text-gray-400 text-right">
@@ -775,13 +786,13 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
             </table>
           </div>
         ) : (
-           <div className="mt-8 text-center text-gray-400 dark:text-gray-600">
+          <div className="mt-8 text-center text-gray-400 dark:text-gray-600">
             <div className="mx-auto w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-2">
               <span className="text-xl font-bold text-gray-300 dark:text-gray-600">L</span>
             </div>
             <p className="text-xs">Henüz kayıt eklenmedi</p>
           </div>
-         )}
+        )}
 
       </div>
 
@@ -792,6 +803,27 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
         <MessageSquare size={20} />
       </button>
 
+      {/* Modal: Completion Warning */}
+      {showCompletionWarning && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl relative text-center">
+            <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle size={32} />
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Hedef Sayıya Ulaşıldı</h3>
+            <p className="text-gray-500 dark:text-gray-400 mb-6 text-sm">
+              Son kimlik okutuldu. Denetlemeyi bitirmek için lütfen <strong>"Denetlemeyi Bitir"</strong> butonuna basın.
+            </p>
+
+            <button
+              onClick={() => setShowCompletionWarning(false)}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition"
+            >
+              Tamam
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
