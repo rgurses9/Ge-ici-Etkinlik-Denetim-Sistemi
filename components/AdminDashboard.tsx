@@ -485,27 +485,54 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {continuingEvents.map(event => (
-                    <button
+                    <div
                       key={event.id}
-                      onClick={() => handleStartAuditClick(event.id)}
-                      className="bg-white dark:bg-gray-800 border border-green-200 dark:border-green-800 p-4 rounded-xl shadow-sm hover:shadow-md hover:border-green-400 dark:hover:border-green-600 transition text-left group w-full"
+                      className="relative bg-white dark:bg-gray-800 border border-green-200 dark:border-green-800 p-4 rounded-xl shadow-sm hover:shadow-md hover:border-green-400 dark:hover:border-green-600 transition text-left group w-full"
                     >
-                      <h4 className="font-bold text-gray-900 dark:text-white group-hover:text-green-700 dark:group-hover:text-green-400 truncate">{event.name}</h4>
-                      <div className="mt-2 flex justify-between text-sm text-gray-500 dark:text-gray-400">
-                        <span>Doluluk</span>
-                        <span className="font-mono">{event.currentCount} / {event.targetCount}</span>
+                      {/* Delete Button (Absolute top-right) */}
+                      {isAdmin && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteClick(event);
+                          }}
+                          className="absolute top-2 right-2 p-2 bg-white/50 dark:bg-black/20 hover:bg-red-50 dark:hover:bg-red-900/40 text-gray-400 hover:text-red-600 dark:text-gray-500 dark:hover:text-red-400 rounded-lg transition z-10"
+                          title="Etkinliği Sil"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+
+                      <div onClick={() => handleStartAuditClick(event.id)} className="cursor-pointer">
+                        <h4 className="font-bold text-gray-900 dark:text-white group-hover:text-green-700 dark:group-hover:text-green-400 truncate pr-8">{event.name}</h4>
+                        <div className="mt-2 flex justify-between text-sm text-gray-500 dark:text-gray-400">
+                          <span>Doluluk</span>
+                          <span className="font-mono">{event.currentCount} / {event.targetCount}</span>
+                        </div>
+                        <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1.5 mt-2">
+                          <div
+                            className="bg-green-500 h-1.5 rounded-full"
+                            style={{ width: `${Math.min(100, (event.currentCount / event.targetCount) * 100)}%` }}
+                          ></div>
+                        </div>
+
+                        {/* User Stats for Continuing Events */}
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {Object.entries(scannedEntries[event.id]?.reduce((acc, entry) => {
+                            acc[entry.recordedBy] = (acc[entry.recordedBy] || 0) + 1;
+                            return acc;
+                          }, {} as Record<string, number>) || {}).map(([user, count]) => (
+                            <span key={user} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600">
+                              <UserIcon size={10} /> {user}: {count}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="mt-3 text-xs text-green-600 dark:text-green-400 font-medium flex items-center gap-1">
+                          <Play size={12} className="fill-current" />
+                          Denetime Devam Et
+                        </div>
                       </div>
-                      <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1.5 mt-2">
-                        <div
-                          className="bg-green-500 h-1.5 rounded-full"
-                          style={{ width: `${Math.min(100, (event.currentCount / event.targetCount) * 100)}%` }}
-                        ></div>
-                      </div>
-                      <div className="mt-3 text-xs text-green-600 dark:text-green-400 font-medium flex items-center gap-1">
-                        <Play size={12} className="fill-current" />
-                        Denetime Devam Et
-                      </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               </div>
