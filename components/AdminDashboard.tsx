@@ -1097,6 +1097,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
               </div>
 
+
+
+              {/* Registrar Stats */}
+              <div className="px-6 py-4 bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700">
+                <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-3">Kaydeden İstatistikleri</h3>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(scannedEntries[viewingEvent.id]?.reduce((acc, entry) => {
+                    acc[entry.recordedBy] = (acc[entry.recordedBy] || 0) + 1;
+                    return acc;
+                  }, {} as Record<string, number>) || {}).map(([registrar, count]) => (
+                    <div key={registrar} className="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-lg text-xs font-medium border border-blue-100 dark:border-blue-800 flex items-center gap-2">
+                      <UserIcon size={12} />
+                      <span>{registrar}</span>
+                      <span className="bg-white dark:bg-gray-800 px-1.5 py-0.5 rounded-md shadow-sm border border-blue-100 dark:border-blue-800 text-blue-800 dark:text-blue-200 font-bold">
+                        {count}
+                      </span>
+                    </div>
+                  ))}
+                  {(!scannedEntries[viewingEvent.id] || scannedEntries[viewingEvent.id].length === 0) && (
+                    <span className="text-xs text-gray-400 italic">Veri bulunamadı</span>
+                  )}
+                </div>
+              </div>
+
               <div className="flex-1 overflow-auto p-0">
                 <table className="w-full text-left text-xs sm:text-sm">
                   <thead className="bg-gray-50 dark:bg-gray-900/30 border-b border-gray-200 dark:border-gray-700 sticky top-0">
