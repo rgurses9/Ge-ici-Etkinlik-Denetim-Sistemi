@@ -585,6 +585,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
   const progressPercentage = Math.min(100, Math.round((scannedList.length / event.targetCount) * 100));
   const isTargetReached = scannedList.length >= event.targetCount;
+  const currentUserScanCount = scannedList.filter(s => s.recordedBy === currentUser.username).length;
 
   if (showSummary) {
     return (
@@ -645,7 +646,11 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       <div className="bg-gray-100 dark:bg-gray-800 px-4 py-1.5 border-b border-gray-200 dark:border-gray-700">
         <div className="flex justify-between text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mb-1">
           <span>İlerleme</span>
-          <span>{scannedList.length} / {event.targetCount} (%{progressPercentage})</span>
+          <div className="flex gap-2">
+            <span>Senin Okuttuğun: <span className="font-bold text-gray-700 dark:text-gray-300">{currentUserScanCount}</span></span>
+            <span>•</span>
+            <span>{scannedList.length} / {event.targetCount} (%{progressPercentage})</span>
+          </div>
         </div>
         <div className="w-full bg-gray-300 dark:bg-gray-600 rounded-full h-2 overflow-hidden">
           <div
