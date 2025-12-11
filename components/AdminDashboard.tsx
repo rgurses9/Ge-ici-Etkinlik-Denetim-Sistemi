@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Event, User, UserRole, ScanEntry } from '../types';
-import { Plus, Users, Calendar, Play, LogOut, Eye, Trash2, Edit, UserCog, Key, ShieldCheck, User as UserIcon, Activity, Archive, Download, RefreshCw, Clock, X, CheckCircle, Sun, Moon } from 'lucide-react';
+import { Plus, Users, Calendar, Play, LogOut, Eye, Trash2, Edit, UserCog, Key, ShieldCheck, User as UserIcon, Activity, Archive, Download, RefreshCw, Clock, X, CheckCircle, Sun, Moon, AlertCircle } from 'lucide-react';
 
 interface AdminDashboardProps {
   currentUser: User;
@@ -489,18 +489,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       key={event.id}
                       className="relative bg-white dark:bg-gray-800 border border-green-200 dark:border-green-800 p-4 rounded-xl shadow-sm hover:shadow-md hover:border-green-400 dark:hover:border-green-600 transition text-left group w-full"
                     >
-                      {/* Delete Button (Absolute top-right) */}
+                      {/* Actions (Absolute top-right) */}
                       {isAdmin && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteClick(event);
-                          }}
-                          className="absolute top-2 right-2 p-2 bg-white/50 dark:bg-black/20 hover:bg-red-50 dark:hover:bg-red-900/40 text-gray-400 hover:text-red-600 dark:text-gray-500 dark:hover:text-red-400 rounded-lg transition z-10"
-                          title="Etkinliği Sil"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        <div className="absolute top-2 right-2 flex gap-1 z-10">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openEditEventModal(event);
+                            }}
+                            className="p-2 bg-white/50 dark:bg-black/20 hover:bg-blue-50 dark:hover:bg-blue-900/40 text-gray-400 hover:text-blue-600 dark:text-gray-500 dark:hover:text-blue-400 rounded-lg transition"
+                            title="Etkinliği Düzenle"
+                          >
+                            <Edit size={16} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteClick(event);
+                            }}
+                            className="p-2 bg-white/50 dark:bg-black/20 hover:bg-red-50 dark:hover:bg-red-900/40 text-gray-400 hover:text-red-600 dark:text-gray-500 dark:hover:text-red-400 rounded-lg transition"
+                            title="Etkinliği Sil"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       )}
 
                       <div onClick={() => handleStartAuditClick(event.id)} className="cursor-pointer">
@@ -1126,10 +1138,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
 
 
-              {/* Registrar Stats */}
               <div className="px-6 py-4 bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700">
-                <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-3">Kaydeden İstatistikleri</h3>
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">İstatistikler</h3>
+                </div>
                 <div className="flex flex-wrap gap-2">
+                  {/* Uncertain Status Count */}
+                  {(() => {
+                    const uncertainCount = (scannedEntries[viewingEvent.id] || []).filter(entry =>
+                      checkWorkStatus(entry.citizen.validityDate).text === 'BELİRSİZ'
+                    ).length;
+
+                    if (uncertainCount > 0) {
+                      return (
+                        <div className="px-3 py-1.5 bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300 rounded-lg text-xs font-medium border border-orange-100 dark:border-orange-800 flex items-center gap-2">
+                          <AlertCircle size={12} />
+                          <span>Belirsiz</span>
+                          <span className="bg-white dark:bg-gray-800 px-1.5 py-0.5 rounded-md shadow-sm border border-orange-100 dark:border-orange-800 text-orange-800 dark:text-orange-200 font-bold">
+                            {uncertainCount}
+                          </span>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+
                   {Object.entries(scannedEntries[viewingEvent.id]?.reduce((acc, entry) => {
                     acc[entry.recordedBy] = (acc[entry.recordedBy] || 0) + 1;
                     return acc;
@@ -1142,6 +1175,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </span>
                     </div>
                   ))}
+
                   {(!scannedEntries[viewingEvent.id] || scannedEntries[viewingEvent.id].length === 0) && (
                     <span className="text-xs text-gray-400 italic">Veri bulunamadı</span>
                   )}

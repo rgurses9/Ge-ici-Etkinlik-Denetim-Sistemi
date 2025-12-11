@@ -341,6 +341,16 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     let status: 'SUCCESS' | 'WARNING' = 'SUCCESS';
 
     if (citizen) {
+      const workStatus = checkWorkStatus(citizen.validityDate);
+      if (workStatus.text === 'ÇALIŞAMAZ') {
+        setLastScanResult({
+          status: 'ERROR',
+          message: 'Kimlik kartının süresi geçmiş özel güvenlik görevlisi bu etkinlikte çalışamaz',
+          citizen
+        });
+        setTcInput('');
+        return;
+      }
       message = 'Kayıt başarı ile gerçekleştirildi';
       status = 'SUCCESS';
     } else {
