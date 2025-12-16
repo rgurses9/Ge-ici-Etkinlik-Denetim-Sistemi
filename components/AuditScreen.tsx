@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Citizen, Event, ScanEntry, User, UserRole } from '../types';
+import { Citizen, Event, ScanEntry, User, UserRole, Company } from '../types';
 import { MOCK_CITIZEN_DB } from '../constants';
-import { AlertCircle, CheckCircle, Clock, Database, Download, Loader2, MessageSquare, Trash2, Upload, User as UserIcon, X } from 'lucide-react';
+import { AlertCircle, CheckCircle, Clock, Database, Download, Loader2, Trash2, Upload, User as UserIcon, X } from 'lucide-react';
 
 // --- Provided CSV Parsing Logic ---
 
@@ -175,7 +175,7 @@ interface AuditScreenProps {
   event: Event;
   allEvents: Event[]; // For cross checking
   currentUser: User;
-  onExit: () => void;
+  onExit: (autoComplete?: { targetReached: boolean; startTime: number }) => void;
   onFinish: (duration: string) => void;
   onScan: (entry: ScanEntry) => void; // This calls Firestore write
   onBulkScan: (entries: ScanEntry[]) => void;
@@ -184,6 +184,8 @@ interface AuditScreenProps {
   allScannedEntries: Record<string, ScanEntry[]>; // For cross checking
   onDatabaseUpdate: (freshDb: Citizen[]) => void;
   isDarkMode: boolean; // Add theme support
+  activeCompanyId?: string | null; // Seçili şirket ID'si
+  activeCompany?: Company; // Seçili şirket bilgisi
 }
 
 const AuditScreen: React.FC<AuditScreenProps> = ({
@@ -198,7 +200,9 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   scannedList,
   allScannedEntries,
   onDatabaseUpdate,
-  isDarkMode
+  isDarkMode,
+  activeCompanyId,
+  activeCompany
 }) => {
   const [tcInput, setTcInput] = useState('');
   const [lastScanResult, setLastScanResult] = useState<{ status: 'SUCCESS' | 'ERROR' | 'WARNING' | 'IDLE', message: string, citizen?: Citizen }>({ status: 'IDLE', message: '' });
@@ -289,12 +293,31 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       return;
     }
 
-    // Check existing in list
+    // Check existing in current company's list
     const alreadyScanned = scannedList.find(s => s.citizen.tc === trimmedTC);
     if (alreadyScanned) {
-      setLastScanResult({ status: 'ERROR', message: 'Bu kişi zaten listeye eklendi.' });
+      setLastScanResult({ status: 'ERROR', message: 'Bu kişi zaten bu şirket listesine eklendi.' });
       setTcInput('');
       return;
+    }
+
+    // Check if TC exists in a different company within the same event
+    if (activeCompanyId && event.companies && event.companies.length > 0) {
+      const allEventScans = allScannedEntries[event.id] || [];
+      const otherCompanyScan = allEventScans.find(
+        entry => entry.citizen.tc === trimmedTC && entry.companyId && entry.companyId !== activeCompanyId
+      );
+
+      if (otherCompanyScan) {
+        const otherCompany = event.companies.find(c => c.id === otherCompanyScan.companyId);
+        const companyName = otherCompany ? otherCompany.name : 'başka bir şirket';
+        setLastScanResult({
+          status: 'ERROR',
+          message: `Bu TC ${companyName} listesinde kayıtlı. Aynı kişi farklı şirketlerde çalışamaz.`
+        });
+        setTcInput('');
+        return;
+      }
     }
 
     // Cross-Event Validation
@@ -310,22 +333,32 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
           continue;
         }
 
-        if (otherEvent.status === 'ACTIVE' && otherEvent.id !== event.id) {
-          conflictError = `Bu TC ${otherEvent.name} etkinliğinde okutuldu. O denetleme personeli ile iletişime geç.`;
-          break;
+        // Skip if it's the same event
+        if (otherEvent.id === event.id) {
+          continue;
         }
 
+        // Check for time overlap
         const currentStart = new Date(event.startDate).getTime();
         const currentEnd = new Date(event.endDate).getTime();
         const otherStart = new Date(otherEvent.startDate).getTime();
         const otherEnd = new Date(otherEvent.endDate).getTime();
 
-        if ((currentStart <= otherEnd) && (currentEnd >= otherStart)) {
+        const hasTimeOverlap = (currentStart <= otherEnd) && (currentEnd >= otherStart);
+
+        // Only show conflict if:
+        // 1. Other event is ACTIVE (regardless of time), OR
+        // 2. Events have overlapping time periods (regardless of status)
+        if (otherEvent.status === 'ACTIVE') {
+          conflictError = `Bu TC ${otherEvent.name} etkinliğinde okutuldu. O denetleme personeli ile iletişime geç.`;
+          break;
+        } else if (hasTimeOverlap) {
           const startTime = new Date(otherEvent.startDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           const endTime = new Date(otherEvent.endDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           conflictError = `Bu kimlik ${otherEvent.name} etkinliğinde ${startTime} - ${endTime} arasında çalışıyor, görev alamaz. O denetleme personeli ile iletişime geç.`;
           break;
         }
+        // If other event is PASSIVE and no time overlap, no conflict - continue checking
       }
     }
 
@@ -369,7 +402,8 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       eventId: event.id,
       citizen: citizen,
       timestamp: new Date().toLocaleTimeString(),
-      recordedBy: currentUser.username
+      recordedBy: currentUser.username,
+      companyId: activeCompanyId || undefined
     };
 
     // Fire and forget (Optimistic UI handled by Firestore listener in App.tsx)
@@ -453,6 +487,19 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
           continue;
         }
 
+        // 2.5. Check if TC exists in a different company within the same event
+        if (activeCompanyId && event.companies && event.companies.length > 0) {
+          const allEventScans = allScannedEntries[event.id] || [];
+          const otherCompanyScan = allEventScans.find(
+            entry => entry.citizen.tc === tc && entry.companyId && entry.companyId !== activeCompanyId
+          );
+
+          if (otherCompanyScan) {
+            failCount++;
+            continue;
+          }
+        }
+
         // 3. Cross-Event Conflict
         let hasConflict = false;
         const allEntriesFlat = Object.values(allScannedEntries).flat() as ScanEntry[];
@@ -463,20 +510,30 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
               continue;
             }
 
-            if (otherEvent.status === 'ACTIVE' && otherEvent.id !== event.id) {
-              hasConflict = true;
-              break;
+            // Skip if it's the same event
+            if (otherEvent.id === event.id) {
+              continue;
             }
 
+            // Check for time overlap
             const currentStart = new Date(event.startDate).getTime();
             const currentEnd = new Date(event.endDate).getTime();
             const otherStart = new Date(otherEvent.startDate).getTime();
             const otherEnd = new Date(otherEvent.endDate).getTime();
 
-            if ((currentStart <= otherEnd) && (currentEnd >= otherStart)) {
+            const hasTimeOverlap = (currentStart <= otherEnd) && (currentEnd >= otherStart);
+
+            // Only show conflict if:
+            // 1. Other event is ACTIVE (regardless of time), OR
+            // 2. Events have overlapping time periods (regardless of status)
+            if (otherEvent.status === 'ACTIVE') {
+              hasConflict = true;
+              break;
+            } else if (hasTimeOverlap) {
               hasConflict = true;
               break;
             }
+            // If other event is PASSIVE and no time overlap, no conflict - continue checking
           }
         }
 
@@ -501,7 +558,8 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
           eventId: event.id,
           citizen: citizen,
           timestamp: currentTimestamp,
-          recordedBy: currentUser.username
+          recordedBy: currentUser.username,
+          companyId: activeCompanyId || undefined
         });
 
         successCount++;
@@ -593,32 +651,34 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     }
   };
 
-  const progressPercentage = Math.min(100, Math.round((scannedList.length / event.targetCount) * 100));
-  const isTargetReached = scannedList.length >= event.targetCount;
+  // Şirket varsa o şirketin hedefine göre, yoksa event'in hedefine göre hesapla
+  const targetCount = activeCompany ? activeCompany.targetCount : event.targetCount;
+  const progressPercentage = Math.min(100, Math.round((scannedList.length / targetCount) * 100));
+  const isTargetReached = scannedList.length >= targetCount;
   const currentUserScanCount = scannedList.filter(s => s.recordedBy === currentUser.username).length;
 
   if (showSummary) {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl text-center">
-          <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center mx-auto mb-4">
-            <CheckCircle size={32} />
+        <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-sm p-5 shadow-2xl text-center">
+          <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center mx-auto mb-3">
+            <CheckCircle size={24} />
           </div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Denetleme Tamamlandı</h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-6">Etkinlik denetimi başarıyla sonlandırıldı ve Excel dosyası indirildi.</p>
+          <h2 className="text-base font-bold text-gray-900 dark:text-white mb-2">Denetleme Tamamlandı</h2>
+          <p className="text-[10px] text-gray-500 dark:text-gray-400 mb-4">Etkinlik denetimi başarıyla sonlandırıldı ve Excel dosyası indirildi.</p>
 
-          <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 mb-6">
+          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-2.5 mb-4">
             <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 flex items-center justify-center gap-1">
-              <Clock size={12} />
+              <Clock size={10} />
               Tamamlama Süresi
             </div>
-            <div className="text-2xl font-mono font-bold text-gray-800 dark:text-white">
+            <div className="text-xl font-mono font-bold text-gray-800 dark:text-white">
               {durationStr}
             </div>
           </div>
 
           <button
-            onClick={() => onFinish(durationStr)} className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-2.5 px-6 rounded-xl transition text-sm"
+            onClick={() => onFinish(durationStr)} className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-2 px-4 rounded-lg transition text-xs"
           >
             Ana Ekrana Dön
           </button>
@@ -633,6 +693,16 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       <div className="bg-white dark:bg-gray-800 px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center sticky top-0 z-10">
         <div>
           <h1 className="text-base font-bold text-gray-900 dark:text-white truncate max-w-xs sm:max-w-lg">{event.name}</h1>
+          {activeCompany && (
+            <div className="flex items-center gap-1.5 mt-1">
+              <span className="bg-secondary-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                {activeCompany.name}
+              </span>
+              <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                Hedef: {activeCompany.targetCount}
+              </span>
+            </div>
+          )}
           <div className="flex items-center gap-2 mt-0.5">
             <span className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
               {dbStatus === 'LOADING' && <><Loader2 size={10} className="animate-spin" /> Veritabanı Yükleniyor...</>}
@@ -646,7 +716,13 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
             <UserIcon size={12} />
             {currentUser.username}
           </div>
-          <button onClick={onExit} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+          <button
+            onClick={() => {
+              const isTargetReached = scannedList.length >= event.targetCount;
+              onExit(isTargetReached ? { targetReached: true, startTime } : undefined);
+            }}
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+          >
             <X size={20} />
           </button>
         </div>
@@ -659,7 +735,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
           <div className="flex gap-2">
             <span>Senin Okuttuğun: <span className="font-bold text-gray-700 dark:text-gray-300">{currentUserScanCount}</span></span>
             <span>•</span>
-            <span>{scannedList.length} / {event.targetCount} (%{progressPercentage})</span>
+            <span>{scannedList.length} / {targetCount} (%{progressPercentage})</span>
           </div>
         </div>
         <div className="w-full bg-gray-300 dark:bg-gray-600 rounded-full h-2 overflow-hidden">
@@ -802,8 +878,8 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
           </div>
         ) : (
           <div className="mt-8 text-center text-gray-400 dark:text-gray-600">
-            <div className="mx-auto w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-2">
-              <span className="text-xl font-bold text-gray-300 dark:text-gray-600">L</span>
+            <div className="mx-auto w-10 h-10 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-2">
+              <span className="text-base font-bold text-gray-300 dark:text-gray-600">L</span>
             </div>
             <p className="text-xs">Henüz kayıt eklenmedi</p>
           </div>
@@ -811,28 +887,22 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
       </div>
 
-      {/* Floating Chat Icon */}
-      <button
-        className="fixed bottom-4 right-4 bg-white dark:bg-gray-800 p-2.5 rounded-full shadow-lg border border-gray-100 dark:border-gray-700 text-primary-600 dark:text-primary-400 hover:bg-gray-50 dark:hover:bg-gray-700"
-      >
-        <MessageSquare size={20} />
-      </button>
 
       {/* Modal: Completion Warning */}
       {showCompletionWarning && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl relative text-center">
-            <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center mx-auto mb-4">
-              <CheckCircle size={32} />
+          <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-sm p-5 shadow-2xl relative text-center">
+            <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center mx-auto mb-3">
+              <CheckCircle size={24} />
             </div>
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Hedef Sayıya Ulaşıldı</h3>
-            <p className="text-gray-500 dark:text-gray-400 mb-6 text-sm">
+            <h3 className="text-base font-bold text-gray-900 dark:text-white mb-2">Hedef Sayıya Ulaşıldı</h3>
+            <p className="text-gray-500 dark:text-gray-400 mb-4 text-xs">
               Son kimlik okutuldu. Denetlemeyi bitirmek için lütfen <strong>"Denetlemeyi Bitir"</strong> butonuna basın.
             </p>
 
             <button
               onClick={() => setShowCompletionWarning(false)}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg transition text-xs"
             >
               Tamam
             </button>

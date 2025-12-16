@@ -51,6 +51,7 @@ const App: React.FC = () => {
 
   // Audit State
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
+  const [activeCompanyId, setActiveCompanyId] = useState<string | null>(null);
 
   // --- Firestore Subscriptions ---
 
@@ -160,11 +161,36 @@ const App: React.FC = () => {
     }
   };
 
-  const handleStartAudit = (eventId: string) => {
+  const handleStartAudit = (eventId: string, companyId?: string) => {
     setActiveEventId(eventId);
+    setActiveCompanyId(companyId || null);
   };
 
-  const handleEndAudit = () => {
+  const handleEndAudit = async (shouldAutoComplete?: { targetReached: boolean; startTime: number }) => {
+    if (shouldAutoComplete?.targetReached && activeEventId) {
+      try {
+        // Calculate duration
+        const diff = Date.now() - shouldAutoComplete.startTime;
+        const hours = Math.floor(diff / 3600000);
+        const minutes = Math.floor((diff % 3600000) / 60000);
+        const seconds = Math.floor((diff % 60000) / 1000);
+
+        const formattedDuration = [
+          hours.toString().padStart(2, '0'),
+          minutes.toString().padStart(2, '0'),
+          seconds.toString().padStart(2, '0')
+        ].join(':');
+
+        // Set event to PASSIVE
+        const eventRef = doc(db, 'events', activeEventId);
+        await updateDoc(eventRef, {
+          status: 'PASSIVE',
+          completionDuration: formattedDuration
+        });
+      } catch (e) {
+        console.error("Error auto-completing audit: ", e);
+      }
+    }
     setActiveEventId(null);
   };
 
@@ -319,7 +345,15 @@ const App: React.FC = () => {
     const activeEvent = events.find(e => e.id === activeEventId);
     if (!activeEvent) return <div>Hata: Etkinlik bulunamadı veya silindi.</div>;
 
-    const currentList = scannedEntries[activeEventId] || [];
+    // Şirket varsa o şirkete ait company bilgisini bul
+    const activeCompany = activeCompanyId
+      ? activeEvent.companies?.find(c => c.id === activeCompanyId)
+      : undefined;
+
+    // Scanned entries'i filtrele - eğer şirket seçilmişse sadece o şirketin kayıtlarını göster
+    const currentList = activeCompanyId
+      ? (scannedEntries[activeEventId] || []).filter(entry => entry.companyId === activeCompanyId)
+      : scannedEntries[activeEventId] || [];
 
     return (
       <AuditScreen
@@ -335,6 +369,8 @@ const App: React.FC = () => {
         allScannedEntries={scannedEntries}
         onDatabaseUpdate={handleDatabaseUpdate}
         isDarkMode={isDarkMode}
+        activeCompanyId={activeCompanyId}
+        activeCompany={activeCompany}
       />
     );
   }
