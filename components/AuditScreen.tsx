@@ -403,7 +403,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       citizen: citizen,
       timestamp: new Date().toLocaleTimeString(),
       recordedBy: currentUser.username,
-      companyId: activeCompanyId || undefined
+      ...(activeCompanyId && { companyId: activeCompanyId })
     };
 
     // Fire and forget (Optimistic UI handled by Firestore listener in App.tsx)
@@ -559,7 +559,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
           citizen: citizen,
           timestamp: currentTimestamp,
           recordedBy: currentUser.username,
-          companyId: activeCompanyId || undefined
+          ...(activeCompanyId && { companyId: activeCompanyId })
         });
 
         successCount++;

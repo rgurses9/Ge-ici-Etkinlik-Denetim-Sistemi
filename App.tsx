@@ -268,8 +268,11 @@ const App: React.FC = () => {
 
   const handleScan = async (entry: ScanEntry) => {
     try {
-      // 1. Add Entry
-      await setDoc(doc(db, 'scanned_entries', entry.id), entry);
+      // 1. Add Entry - Remove undefined fields before sending to Firestore
+      const cleanEntry = Object.fromEntries(
+        Object.entries(entry).filter(([_, value]) => value !== undefined)
+      );
+      await setDoc(doc(db, 'scanned_entries', entry.id), cleanEntry);
 
       // 2. Increment Event Count (Optimistic or Transactional could be better, but simple update works here)
       const event = events.find(e => e.id === entry.eventId);
@@ -304,7 +307,11 @@ const App: React.FC = () => {
       // Add all entries
       newEntries.forEach(entry => {
         const ref = doc(db, 'scanned_entries', entry.id);
-        batch.set(ref, entry);
+        // Remove undefined fields before sending to Firestore
+        const cleanEntry = Object.fromEntries(
+          Object.entries(entry).filter(([_, value]) => value !== undefined)
+        );
+        batch.set(ref, cleanEntry);
       });
 
       // Update event count
