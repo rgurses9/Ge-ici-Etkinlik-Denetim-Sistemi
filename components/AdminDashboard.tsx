@@ -522,32 +522,34 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           // If it's already a Date object (from XLSX cellDates: true)
           if (dateValue instanceof Date) {
-            // Excel Date objelerinde timezone sorunu olabiliyor, bu yüzden UTC gün/ay/yıl çıkarıp local Date oluşturuyoruz
+            // Excel Date objelerinde timezone sorunu olabiliyor, UTC kullanarak doğru tarihi alıyoruz
             const year = dateValue.getUTCFullYear();
             const month = dateValue.getUTCMonth();
             const day = dateValue.getUTCDate();
-            eventDate = new Date(year, month, day);
+            // Tarihi local timezone'da oluştur (saat 00:00:00)
+            eventDate = new Date(year, month, day, 0, 0, 0, 0);
             console.log(`✅ Row ${i + 1} - Date parsed as Date object (UTC):`, {
               original: dateValue.toISOString(),
-              parsed: eventDate.toISOString(),
+              parsed: eventDate.toString(),
               display: `${day}.${month + 1}.${year}`
             });
           }
           // If it's a number (Excel serial date), convert it
           else if (typeof dateValue === 'number') {
             // Excel serial date: days since 1900-01-01 (Excel'in tarihi)
-            // Excel'de 1 = 1900-01-01, ancak Excel'de 1900'ü yanlışlıkla artık yıl kabul ettiği için -2 düzeltmesi gerekiyor
+            // Excel'de 1 = 1900-01-01, ancak Excel'de 1900'ü yanlışlıkla artık yıl kabul ettiği için düzeltme gerekiyor
             const excelEpoch = new Date(Date.UTC(1899, 11, 30)); // 1899-12-30 (Excel epoch için doğru başlangıç)
             const tempDate = new Date(excelEpoch.getTime() + dateValue * 24 * 60 * 60 * 1000);
             // UTC değerlerini kullanarak timezone sorununu önle
             const year = tempDate.getUTCFullYear();
             const month = tempDate.getUTCMonth();
             const day = tempDate.getUTCDate();
-            eventDate = new Date(year, month, day);
+            // Tarihi local timezone'da oluştur (saat 00:00:00)
+            eventDate = new Date(year, month, day, 0, 0, 0, 0);
             console.log(`✅ Row ${i + 1} - Date parsed from Excel serial (${dateValue}):`, {
               serial: dateValue,
               utcDate: tempDate.toISOString(),
-              parsed: eventDate.toISOString(),
+              parsed: eventDate.toString(),
               display: `${day}.${month + 1}.${year}`
             });
           }
@@ -560,8 +562,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               const day = parseInt(dateParts[0]);
               const month = parseInt(dateParts[1]) - 1;
               const year = parseInt(dateParts[2]);
-              eventDate = new Date(year, month, day);
-              console.log(`✅ Row ${i + 1} - Date parsed from string (${dateStr}):`, eventDate);
+              // Tarihi local timezone'da oluştur (saat 00:00:00)
+              eventDate = new Date(year, month, day, 0, 0, 0, 0);
+              console.log(`✅ Row ${i + 1} - Date parsed from string (${dateStr}):`, eventDate.toString());
             } else {
               console.log(`❌ Row ${i + 1} - Invalid string date format (expected DD.MM.YYYY):`, dateStr);
             }
