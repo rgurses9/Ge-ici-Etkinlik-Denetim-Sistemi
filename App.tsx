@@ -278,15 +278,20 @@ const App: React.FC = () => {
 
     console.log('🔄 Loading passive events...');
     try {
+      // orderBy kaldırıldı - indeks gerektirmez, client-side sorting yapacağız
       const q = query(
         collection(db, 'events'),
         where('status', '==', 'PASSIVE'),
-        orderBy('endDate', 'desc'),
         limit(100) // Sadece son 100 pasif etkinlik
       );
 
       const snapshot = await getDocs(q);
-      const fetchedPassive: Event[] = snapshot.docs.map(doc => doc.data() as Event);
+      let fetchedPassive: Event[] = snapshot.docs.map(doc => doc.data() as Event);
+
+      // Client-side sorting (endDate'e göre azalan sırada)
+      fetchedPassive = fetchedPassive.sort((a, b) =>
+        new Date(b.endDate).getTime() - new Date(a.endDate).getTime()
+      );
 
       setPassiveEvents(fetchedPassive);
       setPassiveEventsLoaded(true);
