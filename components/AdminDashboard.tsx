@@ -524,7 +524,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             // Excel serial date: 1 = 1900-01-01 (ama Excel 1900'ü yanlışlıkla artık yıl kabul eder)
             // Doğru epoch: 1899-12-30 (0 günü temsil eder)
             // Her sayı 1 günü temsil eder
-            const daysOffset = dateValue - 1; // Excel 1'den başlar, biz 0'dan başlıyoruz
+            // NOT: Excel'den gelen serial number'a +1 ekliyoruz çünkü timezone farkından dolayı 1 gün eksik geliyor
+            const daysOffset = dateValue; // Excel serial'ı direkt kullan (artık -1 yapmıyoruz)
             const millisecondsPerDay = 24 * 60 * 60 * 1000;
             const baseDate = new Date(1899, 11, 30); // 30 Aralık 1899
             const targetDate = new Date(baseDate.getTime() + daysOffset * millisecondsPerDay);
