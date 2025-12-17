@@ -420,13 +420,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const groupedPassiveEvents = groupPassiveEventsByMonth();
   const monthKeys = Object.keys(groupedPassiveEvents).sort().reverse(); // Newest first
 
-  // Auto-expand the most recent 3 months on mount
-  useEffect(() => {
-    if (monthKeys.length > 0) {
-      const recentMonths = monthKeys.slice(0, 3); // Get first 3 months (newest)
-      setExpandedMonths(new Set(recentMonths));
-    }
-  }, [passiveEvents.length]); // Re-run when passive events count changes
+  // Pasif etkinlik klasörleri varsayılan olarak kapalı gelir
+  // Kullanıcı istediği ayı tıklayarak açabilir
 
   const toggleMonth = (monthKey: string) => {
     setExpandedMonths(prev => {
