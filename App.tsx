@@ -98,15 +98,9 @@ const App: React.FC = () => {
   // --- Firestore Subscriptions ---
 
   // 1. Users Subscription & Initial Seeding
-  // SADECE authenticated kullanıcılar için çalıştır (reads azaltmak için)
+  // HER ZAMAN çalıştır (login için gerekli!)
   useEffect(() => {
-    // Login olmamışsa Firebase'e bağlanma
-    if (!session.isAuthenticated) {
-      console.log('⏸️ Not authenticated, skipping Users subscription');
-      return;
-    }
-
-    console.log('🔄 Starting Users subscription...');
+    console.log('🔄 Starting Users subscription (required for login)...');
     const q = query(collection(db, 'users'), orderBy('username', 'asc'));
     const unsubUsers = onSnapshot(
       q,
@@ -144,7 +138,7 @@ const App: React.FC = () => {
     );
 
     return () => unsubUsers();
-  }, [session.isAuthenticated]); // session.isAuthenticated değiştiğinde çalış
+  }, []); // Sadece mount'ta çalış
 
   // 2. Events Subscription & Initial Seeding
   // SADECE authenticated kullanıcılar için çalıştır (reads azaltmak için)
