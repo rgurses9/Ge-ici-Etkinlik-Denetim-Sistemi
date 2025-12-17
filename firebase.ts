@@ -1,18 +1,26 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
+import { getAnalytics } from "firebase/analytics";
 
+// Firebase configuration - Güvenlik için environment variables kullanılıyor
 const firebaseConfig = {
-  apiKey: "AIzaSyBnSG0V370gNnKPTwfb2tZTi6MEqF5pHUA",
-  authDomain: "denetleme-1f271.firebaseapp.com",
-  databaseURL: "https://denetleme-1f271-default-rtdb.firebaseio.com",
-  projectId: "denetleme-1f271",
-  storageBucket: "denetleme-1f271.firebasestorage.app",
-  messagingSenderId: "276489440280",
-  appId: "1:276489440280:web:a5510870538ddd8ba2476d",
-  measurementId: "G-LKQQQ08VCM"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCdDR19Aq8xSP3TNH3FVeSgVOwhn-96wBg",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "denetleme-devam.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "denetleme-devam",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "denetleme-devam.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "833897901550",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:833897901550:web:0cf25230715f92c43672ff",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-R5XC5VMGBT"
 };
 
+// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-export { db };
+// Initialize Analytics (only in browser environment)
+let analytics;
+if (typeof window !== 'undefined') {
+  analytics = getAnalytics(app);
+}
+
+export { db, analytics };

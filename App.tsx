@@ -257,8 +257,19 @@ const App: React.FC = () => {
           currentCount: event.currentCount + 1
         });
       }
-    } catch (e) {
-      console.error("Error adding scan: ", e);
+
+      console.log('✅ TC başarıyla kaydedildi:', entry.citizen.tc);
+    } catch (e: any) {
+      console.error("❌ Error adding scan: ", e);
+
+      // Firebase quota aşımı kontrolü
+      if (e.code === 'resource-exhausted' || e.message?.includes('quota')) {
+        alert('⚠️ Firebase Ücretsiz Limit Aşıldı!\n\nTC okutuldu ancak kaydedilemedi.\n\nÇözüm: Firebase projenizi Blaze (Kullandıkça Öde) planına yükseltin.\n\nNot: Yeni kayıtlar eklenemez.');
+      } else if (e.code === 'permission-denied') {
+        alert('⚠️ Yetki Hatası!\n\nFirebase yazma izni yok. Firestore Rules kontrol edin.');
+      } else {
+        alert(`⚠️ Kayıt Hatası!\n\nTC okutuldu ancak kaydedilemedi.\n\nHata: ${e.message || 'Bilinmeyen hata'}`);
+      }
     }
   };
 
@@ -285,8 +296,18 @@ const App: React.FC = () => {
       }
 
       await batch.commit();
-    } catch (e) {
-      console.error("Error bulk scanning: ", e);
+      console.log(`✅ ${newEntries.length} TC başarıyla kaydedildi`);
+    } catch (e: any) {
+      console.error("❌ Error bulk scanning: ", e);
+
+      // Firebase quota aşımı kontrolü
+      if (e.code === 'resource-exhausted' || e.message?.includes('quota')) {
+        alert(`⚠️ Firebase Ücretsiz Limit Aşıldı!\n\n${newEntries.length} TC okutuldu ancak kaydedilemedi.\n\nÇözüm: Firebase projenizi Blaze planına yükseltin.`);
+      } else if (e.code === 'permission-denied') {
+        alert('⚠️ Yetki Hatası!\n\nFirebase yazma izni yok.');
+      } else {
+        alert(`⚠️ Toplu Kayıt Hatası!\n\n${newEntries.length} TC kaydedilemedi.\n\nHata: ${e.message || 'Bilinmeyen hata'}`);
+      }
     }
   };
 
