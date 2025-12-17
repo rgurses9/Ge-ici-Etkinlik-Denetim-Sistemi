@@ -37,9 +37,38 @@ const App: React.FC = () => {
     };
   });
 
-  const [events, setEvents] = useState<Event[]>([]);
+  const [events, setEvents] = useState<Event[]>(() => {
+    // Önce localStorage'dan cache'lenmiş events'i yükle
+    if (typeof window !== 'undefined') {
+      const cachedEvents = localStorage.getItem('geds_events_cache');
+      if (cachedEvents) {
+        try {
+          return JSON.parse(cachedEvents);
+        } catch (e) {
+          console.error('Error parsing cached events:', e);
+        }
+      }
+    }
+    return [];
+  });
   const [users, setUsers] = useState<User[]>([]);
-  const [scannedEntries, setScannedEntries] = useState<Record<string, ScanEntry[]>>({});
+  const [scannedEntries, setScannedEntries] = useState<Record<string, ScanEntry[]>>(() => {
+    // Önce localStorage'dan cache'lenmiş scanned entries'i yükle
+    if (typeof window !== 'undefined') {
+      const cachedEntries = localStorage.getItem('geds_scanned_cache');
+      if (cachedEntries) {
+        try {
+          return JSON.parse(cachedEntries);
+        } catch (e) {
+          console.error('Error parsing cached scanned entries:', e);
+        }
+      }
+    }
+    return {};
+  });
+
+  // Loading state - artık gerek yok, cache kullanıyoruz
+  // const [isLoadingData, setIsLoadingData] = useState(true);
 
   // Theme State
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -69,7 +98,15 @@ const App: React.FC = () => {
   // --- Firestore Subscriptions ---
 
   // 1. Users Subscription & Initial Seeding
+  // SADECE authenticated kullanıcılar için çalıştır (reads azaltmak için)
   useEffect(() => {
+    // Login olmamışsa Firebase'e bağlanma
+    if (!session.isAuthenticated) {
+      console.log('⏸️ Not authenticated, skipping Users subscription');
+      return;
+    }
+
+    console.log('🔄 Starting Users subscription...');
     const q = query(collection(db, 'users'), orderBy('username', 'asc'));
     const unsubUsers = onSnapshot(
       q,
@@ -107,10 +144,18 @@ const App: React.FC = () => {
     );
 
     return () => unsubUsers();
-  }, []);
+  }, [session.isAuthenticated]); // session.isAuthenticated değiştiğinde çalış
 
   // 2. Events Subscription & Initial Seeding
+  // SADECE authenticated kullanıcılar için çalıştır (reads azaltmak için)
   useEffect(() => {
+    // Login olmamışsa Firebase'e bağlanma
+    if (!session.isAuthenticated) {
+      console.log('⏸️ Not authenticated, skipping Events subscription');
+      return;
+    }
+
+    console.log('🔄 Starting Events subscription...');
     const unsubEvents = onSnapshot(
       collection(db, 'events'),
       (snapshot) => {
@@ -129,6 +174,8 @@ const App: React.FC = () => {
           setEvents(fetchedEvents);
           console.log("✅ Events loaded from Firestore:", fetchedEvents.length);
         }
+        // Events'ı localStorage'a cache'le
+        localStorage.setItem('geds_events_cache', JSON.stringify(fetchedEvents.length > 0 ? fetchedEvents : INITIAL_EVENTS));
       },
       (error) => {
         console.error("❌ Firebase Events Error:", error);
@@ -142,14 +189,23 @@ const App: React.FC = () => {
         if (error.code !== 'permission-denied') {
           setEvents([]);
         }
+        // Hata durumunda cache'i temizleme (eski veriler görünsün)
       }
     );
 
     return () => unsubEvents();
-  }, []);
+  }, [session.isAuthenticated]); // session.isAuthenticated değiştiğinde çalış
 
   // 3. Scanned Entries Subscription
+  // SADECE authenticated kullanıcılar için çalıştır (reads azaltmak için)
   useEffect(() => {
+    // Login olmamışsa Firebase'e bağlanma
+    if (!session.isAuthenticated) {
+      console.log('⏸️ Not authenticated, skipping Scanned Entries subscription');
+      return;
+    }
+
+    console.log('🔄 Starting Scanned Entries subscription...');
     const q = query(collection(db, 'scanned_entries'), orderBy('timestamp', 'desc'));
     const unsubEntries = onSnapshot(
       q,
@@ -166,6 +222,8 @@ const App: React.FC = () => {
         });
 
         setScannedEntries(grouped);
+        // Scanned entries'i localStorage'a cache'le
+        localStorage.setItem('geds_scanned_cache', JSON.stringify(grouped));
       },
       (error) => {
         console.error("❌ Firebase Scanned Entries Error:", error);
@@ -183,7 +241,7 @@ const App: React.FC = () => {
     );
 
     return () => unsubEntries();
-  }, []);
+  }, [session.isAuthenticated]); // session.isAuthenticated değiştiğinde çalış
 
   // --- Handlers (Now using Firestore) ---
 
