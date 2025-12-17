@@ -455,12 +455,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       reader.onload = async (event) => {
         console.log('📖 Reading Excel file...');
         const data = event.target?.result;
-        // Use cellDates option to auto-convert Excel serial dates to JS Date objects
-        // Use raw: true to preserve Date objects (raw: false would convert them to strings)
-        const workbook = XLSX.read(data, { type: 'binary', cellDates: true, cellNF: false });
+        // cellDates: false kullanarak tarihleri serial number olarak alıyoruz (timezone sorunu olmasın)
+        // raw: false kullanarak değerleri olduğu gibi alıyoruz
+        const workbook = XLSX.read(data, { type: 'binary', cellDates: false, raw: false });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: true, defval: null }) as any[][];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, defval: null }) as any[][];
 
         console.log(`📊 Total rows in Excel: ${jsonData.length}`);
         console.log(`📊 Processing ${jsonData.length - 1} rows (excluding header)`);
@@ -516,40 +516,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           console.log(`🔍 Row ${i + 1} - Parsing date:`, {
             value: dateValue,
-            type: typeof dateValue,
-            isDate: dateValue instanceof Date
+            type: typeof dateValue
           });
 
-          // If it's already a Date object (from XLSX cellDates: true)
-          if (dateValue instanceof Date) {
-            // Excel Date objelerinde timezone sorunu olabiliyor, UTC kullanarak doğru tarihi alıyoruz
-            const year = dateValue.getUTCFullYear();
-            const month = dateValue.getUTCMonth();
-            const day = dateValue.getUTCDate();
-            // Tarihi local timezone'da oluştur (saat 00:00:00)
-            eventDate = new Date(year, month, day, 0, 0, 0, 0);
-            console.log(`✅ Row ${i + 1} - Date parsed as Date object (UTC):`, {
-              original: dateValue.toISOString(),
-              parsed: eventDate.toString(),
-              display: `${day}.${month + 1}.${year}`
-            });
-          }
           // If it's a number (Excel serial date), convert it
-          else if (typeof dateValue === 'number') {
-            // Excel serial date: days since 1900-01-01 (Excel'in tarihi)
-            // Excel'de 1 = 1900-01-01, ancak Excel'de 1900'ü yanlışlıkla artık yıl kabul ettiği için düzeltme gerekiyor
-            const excelEpoch = new Date(Date.UTC(1899, 11, 30)); // 1899-12-30 (Excel epoch için doğru başlangıç)
-            const tempDate = new Date(excelEpoch.getTime() + dateValue * 24 * 60 * 60 * 1000);
-            // UTC değerlerini kullanarak timezone sorununu önle
-            const year = tempDate.getUTCFullYear();
-            const month = tempDate.getUTCMonth();
-            const day = tempDate.getUTCDate();
+          if (typeof dateValue === 'number') {
+            // Excel serial date: 1 = 1900-01-01 (ama Excel 1900'ü yanlışlıkla artık yıl kabul eder)
+            // Doğru epoch: 1899-12-30 (0 günü temsil eder)
+            // Her sayı 1 günü temsil eder
+            const daysOffset = dateValue - 1; // Excel 1'den başlar, biz 0'dan başlıyoruz
+            const millisecondsPerDay = 24 * 60 * 60 * 1000;
+            const baseDate = new Date(1899, 11, 30); // 30 Aralık 1899
+            const targetDate = new Date(baseDate.getTime() + daysOffset * millisecondsPerDay);
+
+            const year = targetDate.getFullYear();
+            const month = targetDate.getMonth();
+            const day = targetDate.getDate();
+
             // Tarihi local timezone'da oluştur (saat 00:00:00)
             eventDate = new Date(year, month, day, 0, 0, 0, 0);
-            console.log(`✅ Row ${i + 1} - Date parsed from Excel serial (${dateValue}):`, {
+            console.log(`✅ Row ${i + 1} - Date parsed from Excel serial:`, {
               serial: dateValue,
-              utcDate: tempDate.toISOString(),
-              parsed: eventDate.toString(),
+              daysOffset: daysOffset,
+              calculated: targetDate.toDateString(),
+              final: eventDate.toDateString(),
               display: `${day}.${month + 1}.${year}`
             });
           }
@@ -564,7 +554,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               const year = parseInt(dateParts[2]);
               // Tarihi local timezone'da oluştur (saat 00:00:00)
               eventDate = new Date(year, month, day, 0, 0, 0, 0);
-              console.log(`✅ Row ${i + 1} - Date parsed from string (${dateStr}):`, eventDate.toString());
+              console.log(`✅ Row ${i + 1} - Date parsed from string (${dateStr}):`, eventDate.toDateString());
             } else {
               console.log(`❌ Row ${i + 1} - Invalid string date format (expected DD.MM.YYYY):`, dateStr);
             }
@@ -625,7 +615,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             endDate: endDate.toISOString()
           };
 
-          console.log(`✅ Row ${i + 1} - Creating event:`, newEvent);
+          console.log(`✅ Row ${i + 1} - Creating event:`, {
+            name: eventNameWithDate,
+            formattedDate: formattedDate,
+            eventDate: eventDate.toDateString(),
+            startDate: startDate.toString(),
+            endDate: endDate.toString(),
+            startDateISO: startDate.toISOString(),
+            endDateISO: endDate.toISOString()
+          });
 
           try {
             await onAddEvent(newEvent);
