@@ -11,7 +11,8 @@
     "firebase:login": "firebase login",
     "firebase:init": "firebase init",
     "firebase:deploy": "firebase deploy",
-    "firebase:serve": "firebase serve"
+    "firebase:serve": "firebase serve",
+    "migrate:firebase": "node migrate-firebase-data.js"
   },
   "dependencies": {
     "@google/genai": "^1.30.0",

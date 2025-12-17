@@ -65,20 +65,31 @@ const App: React.FC = () => {
 
         // Seed Initial Users if DB is empty
         if (fetchedUsers.length === 0) {
-          console.log("Seeding initial users to Firestore...");
+          console.log("🌱 Seeding initial users to Firestore...");
           INITIAL_USERS.forEach(async (user) => {
             await setDoc(doc(db, 'users', user.id), user);
           });
+          // Seed işlemi sırasında da kullanıcıları state'e ekle
+          setUsers(INITIAL_USERS);
+          console.log("✅ Initial users seeded and loaded:", INITIAL_USERS.length);
         } else {
           setUsers(fetchedUsers);
+          console.log("✅ Users loaded from Firestore:", fetchedUsers.length);
         }
       },
       (error) => {
         console.error("❌ Firebase Users Error:", error);
-        if (error.code === 'resource-exhausted' || error.message.includes('quota')) {
+        if (error.code === 'resource-exhausted' || error.message?.includes('quota')) {
           alert('⚠️ Firebase Ücretsiz Limit Aşıldı!\n\nKullanıcı verileri yüklenemedi.');
+        } else if (error.code === 'permission-denied') {
+          alert('⚠️ Firebase İzin Hatası!\n\nFirestore Rules kontrol edin.\n\nGeçici çözüm: Initial users yüklendi.');
+          // İzin hatası durumunda initial users'ı yükle
+          setUsers(INITIAL_USERS);
         }
-        setUsers([]);
+        // Diğer hatalarda boş array
+        if (error.code !== 'permission-denied') {
+          setUsers([]);
+        }
       }
     );
 
@@ -94,20 +105,30 @@ const App: React.FC = () => {
 
         // Seed Initial Events if DB is empty
         if (fetchedEvents.length === 0) {
-          console.log("Seeding initial events to Firestore...");
+          console.log("🌱 Seeding initial events to Firestore...");
           INITIAL_EVENTS.forEach(async (event) => {
             await setDoc(doc(db, 'events', event.id), event);
           });
+          // Seed işlemi sırasında da events'i state'e ekle
+          setEvents(INITIAL_EVENTS);
+          console.log("✅ Initial events seeded and loaded:", INITIAL_EVENTS.length);
         } else {
           setEvents(fetchedEvents);
+          console.log("✅ Events loaded from Firestore:", fetchedEvents.length);
         }
       },
       (error) => {
         console.error("❌ Firebase Events Error:", error);
-        if (error.code === 'resource-exhausted' || error.message.includes('quota')) {
+        if (error.code === 'resource-exhausted' || error.message?.includes('quota')) {
           alert('⚠️ Firebase Ücretsiz Limit Aşıldı!\n\nEtkinlik verileri yüklenemedi.');
+        } else if (error.code === 'permission-denied') {
+          alert('⚠️ Firebase İzin Hatası!\n\nFirestore Rules kontrol edin.\n\nGeçici çözüm: Initial events yüklendi.');
+          setEvents(INITIAL_EVENTS);
         }
-        setEvents([]);
+        // Diğer hatalarda boş array
+        if (error.code !== 'permission-denied') {
+          setEvents([]);
+        }
       }
     );
 
