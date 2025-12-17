@@ -58,38 +58,58 @@ const App: React.FC = () => {
   // 1. Users Subscription & Initial Seeding
   useEffect(() => {
     const q = query(collection(db, 'users'), orderBy('username', 'asc'));
-    const unsubUsers = onSnapshot(q, (snapshot) => {
-      const fetchedUsers: User[] = snapshot.docs.map(doc => doc.data() as User);
+    const unsubUsers = onSnapshot(
+      q,
+      (snapshot) => {
+        const fetchedUsers: User[] = snapshot.docs.map(doc => doc.data() as User);
 
-      // Seed Initial Users if DB is empty
-      if (fetchedUsers.length === 0) {
-        console.log("Seeding initial users to Firestore...");
-        INITIAL_USERS.forEach(async (user) => {
-          await setDoc(doc(db, 'users', user.id), user);
-        });
-      } else {
-        setUsers(fetchedUsers);
+        // Seed Initial Users if DB is empty
+        if (fetchedUsers.length === 0) {
+          console.log("Seeding initial users to Firestore...");
+          INITIAL_USERS.forEach(async (user) => {
+            await setDoc(doc(db, 'users', user.id), user);
+          });
+        } else {
+          setUsers(fetchedUsers);
+        }
+      },
+      (error) => {
+        console.error("❌ Firebase Users Error:", error);
+        if (error.code === 'resource-exhausted' || error.message.includes('quota')) {
+          alert('⚠️ Firebase Ücretsiz Limit Aşıldı!\n\nKullanıcı verileri yüklenemedi.');
+        }
+        setUsers([]);
       }
-    });
+    );
 
     return () => unsubUsers();
   }, []);
 
   // 2. Events Subscription & Initial Seeding
   useEffect(() => {
-    const unsubEvents = onSnapshot(collection(db, 'events'), (snapshot) => {
-      const fetchedEvents: Event[] = snapshot.docs.map(doc => doc.data() as Event);
+    const unsubEvents = onSnapshot(
+      collection(db, 'events'),
+      (snapshot) => {
+        const fetchedEvents: Event[] = snapshot.docs.map(doc => doc.data() as Event);
 
-      // Seed Initial Events if DB is empty
-      if (fetchedEvents.length === 0) {
-        console.log("Seeding initial events to Firestore...");
-        INITIAL_EVENTS.forEach(async (event) => {
-          await setDoc(doc(db, 'events', event.id), event);
-        });
-      } else {
-        setEvents(fetchedEvents);
+        // Seed Initial Events if DB is empty
+        if (fetchedEvents.length === 0) {
+          console.log("Seeding initial events to Firestore...");
+          INITIAL_EVENTS.forEach(async (event) => {
+            await setDoc(doc(db, 'events', event.id), event);
+          });
+        } else {
+          setEvents(fetchedEvents);
+        }
+      },
+      (error) => {
+        console.error("❌ Firebase Events Error:", error);
+        if (error.code === 'resource-exhausted' || error.message.includes('quota')) {
+          alert('⚠️ Firebase Ücretsiz Limit Aşıldı!\n\nEtkinlik verileri yüklenemedi.');
+        }
+        setEvents([]);
       }
-    });
+    );
 
     return () => unsubEvents();
   }, []);
@@ -97,20 +117,36 @@ const App: React.FC = () => {
   // 3. Scanned Entries Subscription
   useEffect(() => {
     const q = query(collection(db, 'scanned_entries'), orderBy('timestamp', 'desc'));
-    const unsubEntries = onSnapshot(q, (snapshot) => {
-      const fetchedEntries: ScanEntry[] = snapshot.docs.map(doc => doc.data() as ScanEntry);
+    const unsubEntries = onSnapshot(
+      q,
+      (snapshot) => {
+        const fetchedEntries: ScanEntry[] = snapshot.docs.map(doc => doc.data() as ScanEntry);
 
-      // Group by eventId
-      const grouped: Record<string, ScanEntry[]> = {};
-      fetchedEntries.forEach(entry => {
-        if (!grouped[entry.eventId]) {
-          grouped[entry.eventId] = [];
+        // Group by eventId
+        const grouped: Record<string, ScanEntry[]> = {};
+        fetchedEntries.forEach(entry => {
+          if (!grouped[entry.eventId]) {
+            grouped[entry.eventId] = [];
+          }
+          grouped[entry.eventId].push(entry);
+        });
+
+        setScannedEntries(grouped);
+      },
+      (error) => {
+        console.error("❌ Firebase Scanned Entries Error:", error);
+
+        // Firebase quota aşımı kontrolü
+        if (error.code === 'resource-exhausted' || error.message.includes('quota')) {
+          alert('⚠️ Firebase Ücretsiz Limit Aşıldı!\n\nKaydedilen TC\'ler görüntülenemiyor.\n\nÇözüm: Firebase projenizi Blaze (Kullandıkça Öde) planına yükseltin.\n\nNot: Yeni kayıtlar eklenebilir ancak mevcut kayıtlar görüntülenemez.');
+        } else {
+          alert(`Firebase Bağlantı Hatası: ${error.message}`);
         }
-        grouped[entry.eventId].push(entry);
-      });
 
-      setScannedEntries(grouped);
-    });
+        // Hata durumunda boş veri göster
+        setScannedEntries({});
+      }
+    );
 
     return () => unsubEntries();
   }, []);

@@ -198,8 +198,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setEditingEvent(event);
     setEditEventName(event.name);
     setEditEventTarget(event.targetCount);
-    setEditEventStart(event.startDate);
-    setEditEventEnd(event.endDate);
+
+    // ISO string'i datetime-local input formatına çevir (YYYY-MM-DDTHH:mm)
+    const formatDateForInput = (isoString: string) => {
+      if (!isoString) return '';
+      const date = new Date(isoString);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      return `${year}-${month}-${day}T${hours}:${minutes}`;
+    };
+
+    setEditEventStart(formatDateForInput(event.startDate));
+    setEditEventEnd(formatDateForInput(event.endDate));
 
     // Şirket bilgilerini yükle
     if (event.companies && event.companies.length > 0) {
@@ -506,14 +519,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           // If it's already a Date object (from XLSX cellDates: true)
           if (dateValue instanceof Date) {
-            eventDate = dateValue;
+            // Excel Date objelerinde timezone sorunu olabiliyor, bu yüzden gün/ay/yıl çıkarıp yeni Date oluşturuyoruz
+            const year = dateValue.getFullYear();
+            const month = dateValue.getMonth();
+            const day = dateValue.getDate();
+            eventDate = new Date(year, month, day);
             console.log(`✅ Row ${i + 1} - Date parsed as Date object:`, eventDate);
           }
           // If it's a number (Excel serial date), convert it
           else if (typeof dateValue === 'number') {
             // Excel serial date: days since 1900-01-01
             const excelEpoch = new Date(1900, 0, 1);
-            eventDate = new Date(excelEpoch.getTime() + (dateValue - 2) * 24 * 60 * 60 * 1000);
+            const tempDate = new Date(excelEpoch.getTime() + (dateValue - 2) * 24 * 60 * 60 * 1000);
+            // Timezone sorununu önlemek için gün/ay/yıl çıkarıp yeni Date oluştur
+            const year = tempDate.getFullYear();
+            const month = tempDate.getMonth();
+            const day = tempDate.getDate();
+            eventDate = new Date(year, month, day);
             console.log(`✅ Row ${i + 1} - Date parsed from Excel serial (${dateValue}):`, eventDate);
           }
           // If it's a string (DD.MM.YYYY format)
