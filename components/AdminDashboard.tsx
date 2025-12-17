@@ -456,11 +456,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         console.log('📖 Reading Excel file...');
         const data = event.target?.result;
         // cellDates: false kullanarak tarihleri serial number olarak alıyoruz (timezone sorunu olmasın)
-        // raw: false kullanarak değerleri olduğu gibi alıyoruz
-        const workbook = XLSX.read(data, { type: 'binary', cellDates: false, raw: false });
+        // raw: true kullanarak sayıları number olarak alıyoruz (string değil)
+        const workbook = XLSX.read(data, { type: 'binary', cellDates: false, raw: true });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, defval: null }) as any[][];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: true, defval: null }) as any[][];
 
         console.log(`📊 Total rows in Excel: ${jsonData.length}`);
         console.log(`📊 Processing ${jsonData.length - 1} rows (excluding header)`);
@@ -543,20 +543,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               display: `${day}.${month + 1}.${year}`
             });
           }
-          // If it's a string (DD.MM.YYYY format)
+          // If it's a string (DD.MM.YYYY or DD/MM/YYYY or DD-MM-YYYY format)
           else if (typeof dateValue === 'string') {
             const dateStr = dateValue.trim();
             console.log(`🔍 Row ${i + 1} - Parsing string date:`, dateStr);
-            const dateParts = dateStr.split('.');
+            // Try different separators: . / -
+            let dateParts = dateStr.split('.');
+            if (dateParts.length !== 3) dateParts = dateStr.split('/');
+            if (dateParts.length !== 3) dateParts = dateStr.split('-');
+
             if (dateParts.length === 3) {
               const day = parseInt(dateParts[0]);
               const month = parseInt(dateParts[1]) - 1;
               const year = parseInt(dateParts[2]);
-              // Tarihi local timezone'da oluştur (saat 00:00:00)
-              eventDate = new Date(year, month, day, 0, 0, 0, 0);
-              console.log(`✅ Row ${i + 1} - Date parsed from string (${dateStr}):`, eventDate.toDateString());
+
+              if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
+                // Tarihi local timezone'da oluştur (saat 00:00:00)
+                eventDate = new Date(year, month, day, 0, 0, 0, 0);
+                console.log(`✅ Row ${i + 1} - Date parsed from string (${dateStr}):`, eventDate.toDateString());
+              } else {
+                console.log(`❌ Row ${i + 1} - Invalid date parts:`, { day, month, year });
+              }
             } else {
-              console.log(`❌ Row ${i + 1} - Invalid string date format (expected DD.MM.YYYY):`, dateStr);
+              console.log(`❌ Row ${i + 1} - Invalid string date format (expected DD.MM.YYYY, DD/MM/YYYY or DD-MM-YYYY):`, dateStr);
             }
           } else {
             console.log(`❌ Row ${i + 1} - Unknown date type:`, typeof dateValue);
