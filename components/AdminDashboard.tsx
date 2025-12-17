@@ -1262,7 +1262,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       value={editNumberOfCompanies || ''}
                       onChange={(e) => {
                         const value = e.target.value.replace(/\D/g, '');
-                        let count = value ? parseInt(value) : 1;
+                        if (value === '') {
+                          setEditNumberOfCompanies(0);
+                          setEditEventCompanies([]);
+                          return;
+                        }
+                        let count = parseInt(value);
                         count = Math.min(Math.max(count, 1), 10);
                         setEditNumberOfCompanies(count);
                         const updatedCompanies = Array.from({ length: count }, (_, index) => ({
@@ -1543,7 +1548,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       value={numberOfCompanies || ''}
                       onChange={(e) => {
                         const value = e.target.value.replace(/\D/g, '');
-                        let count = value ? parseInt(value) : 1;
+                        if (value === '') {
+                          setNumberOfCompanies(0);
+                          setNewEventCompanies([]);
+                          return;
+                        }
+                        let count = parseInt(value);
                         count = Math.min(Math.max(count, 1), 10);
                         setNumberOfCompanies(count);
                         // Mevcut şirketleri koru, eksik olanları ekle
