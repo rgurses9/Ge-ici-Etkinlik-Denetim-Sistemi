@@ -14,7 +14,10 @@ import {
   deleteDoc,
   query,
   orderBy,
-  writeBatch
+  writeBatch,
+  limit,
+  where,
+  getDocs
 } from 'firebase/firestore';
 
 const App: React.FC = () => {
@@ -66,6 +69,23 @@ const App: React.FC = () => {
     }
     return {};
   });
+
+  // Pasif etkinlikleri ayrı state'te tut (sadece gerektiğinde yüklenecek)
+  const [passiveEvents, setPassiveEvents] = useState<Event[]>(() => {
+    // Önce localStorage'dan cache'lenmiş passive events'i yükle
+    if (typeof window !== 'undefined') {
+      const cachedPassive = localStorage.getItem('geds_passive_cache');
+      if (cachedPassive) {
+        try {
+          return JSON.parse(cachedPassive);
+        } catch (e) {
+          console.error('Error parsing cached passive events:', e);
+        }
+      }
+    }
+    return [];
+  });
+  const [passiveEventsLoaded, setPassiveEventsLoaded] = useState(false);
 
   // Loading state - artık gerek yok, cache kullanıyoruz
   // const [isLoadingData, setIsLoadingData] = useState(true);
@@ -149,9 +169,14 @@ const App: React.FC = () => {
       return;
     }
 
-    console.log('🔄 Starting Events subscription...');
-    const unsubEvents = onSnapshot(
+    console.log('🔄 Starting Events subscription (ACTIVE/IN_PROGRESS only)...');
+    // SADECE ACTIVE ve IN_PROGRESS etkinlikleri çek (reads azaltmak için)
+    const q = query(
       collection(db, 'events'),
+      where('status', 'in', ['ACTIVE', 'IN_PROGRESS'])
+    );
+    const unsubEvents = onSnapshot(
+      q,
       (snapshot) => {
         const fetchedEvents: Event[] = snapshot.docs.map(doc => doc.data() as Event);
 
@@ -199,8 +224,13 @@ const App: React.FC = () => {
       return;
     }
 
-    console.log('🔄 Starting Scanned Entries subscription...');
-    const q = query(collection(db, 'scanned_entries'), orderBy('timestamp', 'desc'));
+    console.log('🔄 Starting Scanned Entries subscription (last 500 only)...');
+    // SADECE son 500 kayıt (reads azaltmak için)
+    const q = query(
+      collection(db, 'scanned_entries'),
+      orderBy('timestamp', 'desc'),
+      limit(500)
+    );
     const unsubEntries = onSnapshot(
       q,
       (snapshot) => {
@@ -238,6 +268,39 @@ const App: React.FC = () => {
   }, [session.isAuthenticated]); // session.isAuthenticated değiştiğinde çalış
 
   // --- Handlers (Now using Firestore) ---
+
+  // Pasif etkinlikleri yükle (sadece gerektiğinde çağrılır)
+  const loadPassiveEvents = async () => {
+    if (passiveEventsLoaded) {
+      console.log('⏸️ Passive events already loaded, skipping...');
+      return;
+    }
+
+    console.log('🔄 Loading passive events...');
+    try {
+      const q = query(
+        collection(db, 'events'),
+        where('status', '==', 'PASSIVE'),
+        orderBy('endDate', 'desc'),
+        limit(100) // Sadece son 100 pasif etkinlik
+      );
+
+      const snapshot = await getDocs(q);
+      const fetchedPassive: Event[] = snapshot.docs.map(doc => doc.data() as Event);
+
+      setPassiveEvents(fetchedPassive);
+      setPassiveEventsLoaded(true);
+
+      // Cache'e kaydet
+      localStorage.setItem('geds_passive_cache', JSON.stringify(fetchedPassive));
+      console.log(`✅ Passive events loaded: ${fetchedPassive.length}`);
+    } catch (error: any) {
+      console.error('❌ Error loading passive events:', error);
+      if (error.code === 'resource-exhausted' || error.message?.includes('quota')) {
+        alert('⚠️ Firebase Limit Aşıldı!\n\nPasif etkinlikler yüklenemedi.');
+      }
+    }
+  };
 
   const handleLogin = (user: User) => {
     const newSession = {
@@ -534,6 +597,8 @@ const App: React.FC = () => {
     <AdminDashboard
       currentUser={session.currentUser}
       events={events}
+      passiveEvents={passiveEvents}
+      onLoadPassiveEvents={loadPassiveEvents}
       users={users}
       scannedEntries={scannedEntries}
       onLogout={handleLogout}
