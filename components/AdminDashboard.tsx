@@ -527,24 +527,34 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           // If it's already a Date object (from XLSX cellDates: true)
           if (dateValue instanceof Date) {
-            // Excel Date objelerinde timezone sorunu olabiliyor, bu yüzden gün/ay/yıl çıkarıp yeni Date oluşturuyoruz
-            const year = dateValue.getFullYear();
-            const month = dateValue.getMonth();
-            const day = dateValue.getDate();
+            // Excel Date objelerinde timezone sorunu olabiliyor, bu yüzden UTC gün/ay/yıl çıkarıp local Date oluşturuyoruz
+            const year = dateValue.getUTCFullYear();
+            const month = dateValue.getUTCMonth();
+            const day = dateValue.getUTCDate();
             eventDate = new Date(year, month, day);
-            console.log(`✅ Row ${i + 1} - Date parsed as Date object:`, eventDate);
+            console.log(`✅ Row ${i + 1} - Date parsed as Date object (UTC):`, {
+              original: dateValue.toISOString(),
+              parsed: eventDate.toISOString(),
+              display: `${day}.${month + 1}.${year}`
+            });
           }
           // If it's a number (Excel serial date), convert it
           else if (typeof dateValue === 'number') {
-            // Excel serial date: days since 1900-01-01
-            const excelEpoch = new Date(1900, 0, 1);
-            const tempDate = new Date(excelEpoch.getTime() + (dateValue - 2) * 24 * 60 * 60 * 1000);
-            // Timezone sorununu önlemek için gün/ay/yıl çıkarıp yeni Date oluştur
-            const year = tempDate.getFullYear();
-            const month = tempDate.getMonth();
-            const day = tempDate.getDate();
+            // Excel serial date: days since 1900-01-01 (Excel'in tarihi)
+            // Excel'de 1 = 1900-01-01, ancak Excel'de 1900'ü yanlışlıkla artık yıl kabul ettiği için -2 düzeltmesi gerekiyor
+            const excelEpoch = new Date(Date.UTC(1899, 11, 30)); // 1899-12-30 (Excel epoch için doğru başlangıç)
+            const tempDate = new Date(excelEpoch.getTime() + dateValue * 24 * 60 * 60 * 1000);
+            // UTC değerlerini kullanarak timezone sorununu önle
+            const year = tempDate.getUTCFullYear();
+            const month = tempDate.getUTCMonth();
+            const day = tempDate.getUTCDate();
             eventDate = new Date(year, month, day);
-            console.log(`✅ Row ${i + 1} - Date parsed from Excel serial (${dateValue}):`, eventDate);
+            console.log(`✅ Row ${i + 1} - Date parsed from Excel serial (${dateValue}):`, {
+              serial: dateValue,
+              utcDate: tempDate.toISOString(),
+              parsed: eventDate.toISOString(),
+              display: `${day}.${month + 1}.${year}`
+            });
           }
           // If it's a string (DD.MM.YYYY format)
           else if (typeof dateValue === 'string') {
