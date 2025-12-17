@@ -88,6 +88,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [selectedEventForCompany, setSelectedEventForCompany] = useState<Event | null>(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
 
+  // Excel Upload Refs
+  const userExcelFileInputRef = useRef<HTMLInputElement>(null);
+
   // Excel Upload for Bulk Event Creation
   const excelFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -664,6 +667,126 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  // Handle Excel Upload for Bulk User Creation
+  const handleUserExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    console.log('📁 User Excel file selected:', file.name);
+
+    try {
+      const XLSX = await import('xlsx');
+      const reader = new FileReader();
+
+      reader.onload = async (event) => {
+        console.log('📖 Reading User Excel file...');
+        const data = event.target?.result;
+        const workbook = XLSX.read(data, { type: 'binary', cellDates: false, raw: true });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: true, defval: null }) as any[][];
+
+        console.log(`📊 Total rows in User Excel: ${jsonData.length}`);
+        console.log(`📊 Processing ${jsonData.length - 1} rows (excluding header)`);
+
+        let createdCount = 0;
+        let skippedCount = 0;
+
+        // Skip header row, start from index 1
+        // Expected columns: [Kullanıcı Adı, Şifre, Roller (virgülle ayrılmış)]
+        for (let i = 1; i < jsonData.length; i++) {
+          const row = jsonData[i];
+
+          // Skip completely empty rows
+          if (!row || row.every(cell => cell === null || cell === undefined || cell === '')) {
+            continue;
+          }
+
+          if (row.length < 2) {
+            console.log(`⏭️ Row ${i + 1}: Skipped (insufficient columns, need at least 2)`);
+            skippedCount++;
+            continue;
+          }
+
+          const username = row[0]?.toString().trim(); // Column 1: Username
+          const password = row[1]?.toString().trim(); // Column 2: Password
+          const rolesStr = row[2]?.toString().trim() || 'PERSONNEL'; // Column 3: Roles (optional, default: PERSONNEL)
+
+          console.log(`📝 Row ${i + 1}:`, { username, password: '***', rolesStr });
+
+          // Validation
+          const validationErrors = [];
+          if (!username || username === '') validationErrors.push('kullanıcı adı eksik');
+          if (!password || password === '') validationErrors.push('şifre eksik');
+
+          if (validationErrors.length > 0) {
+            console.log(`⏭️ Row ${i + 1}: Skipped - ${validationErrors.join(', ')}`);
+            skippedCount++;
+            continue;
+          }
+
+          // Check if user already exists
+          const existingUser = users.find(u => u.username === username);
+          if (existingUser) {
+            console.log(`⏭️ Row ${i + 1}: Skipped - user already exists: ${username}`);
+            skippedCount++;
+            continue;
+          }
+
+          // Parse roles (comma-separated, e.g., "ADMIN,PERSONNEL")
+          const roles: UserRole[] = [];
+          const rolesList = rolesStr.split(',').map(r => r.trim().toUpperCase());
+
+          rolesList.forEach(role => {
+            if (role === 'ADMIN') roles.push(UserRole.ADMIN);
+            else if (role === 'PERSONNEL') roles.push(UserRole.PERSONNEL);
+          });
+
+          // Default to PERSONNEL if no valid roles
+          if (roles.length === 0) {
+            roles.push(UserRole.PERSONNEL);
+          }
+
+          // Create user
+          const newUser: User = {
+            id: `user_${Date.now()}_${i}`,
+            username: username,
+            fullName: username,
+            password: password,
+            roles: roles
+          };
+
+          console.log(`✅ Row ${i + 1} - Creating user:`, { ...newUser, password: '***' });
+
+          try {
+            await onAddUser(newUser);
+            console.log(`✅ Row ${i + 1} - User created successfully: ${username}`);
+            createdCount++;
+          } catch (err) {
+            console.error(`❌ Row ${i + 1} - Error creating user ${username}:`, err);
+            skippedCount++;
+          }
+
+          // Small delay to avoid overwhelming Firebase
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
+        console.log(`\n🎉 User upload complete!\n📊 Created: ${createdCount}\n⏭️ Skipped: ${skippedCount}`);
+        alert(`Kullanıcılar başarıyla yüklendi!\n\nOluşturulan: ${createdCount}\nAtlanan: ${skippedCount}`);
+      };
+
+      reader.readAsBinaryString(file);
+    } catch (error) {
+      console.error('❌ User Excel upload error:', error);
+      alert('Kullanıcı Excel dosyası yüklenirken hata oluştu.');
+    }
+
+    // Reset file input
+    if (userExcelFileInputRef.current) {
+      userExcelFileInputRef.current.value = '';
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col transition-colors duration-200">
       {/* Header */}
@@ -769,12 +892,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             )}
 
             {isAdmin && activeTab === 'USERS' && (
-              <button
-                onClick={() => setShowAddUserModal(true)}
-                className="flex-1 sm:flex-none px-2 py-1.5 bg-secondary-600 text-white rounded-lg text-xs font-medium hover:bg-secondary-700 shadow-sm flex items-center justify-center gap-1.5"
-              >
-                <Plus size={14} /> Ekle
-              </button>
+              <>
+                <button
+                  onClick={() => setShowAddUserModal(true)}
+                  className="flex-1 sm:flex-none px-2 py-1.5 bg-secondary-600 text-white rounded-lg text-xs font-medium hover:bg-secondary-700 shadow-sm flex items-center justify-center gap-1.5"
+                >
+                  <Plus size={14} /> Ekle
+                </button>
+                <button
+                  onClick={() => userExcelFileInputRef.current?.click()}
+                  className="flex-1 sm:flex-none px-2 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 shadow-sm flex items-center justify-center gap-1.5"
+                  title="Excel'den Toplu Kullanıcı Yükle"
+                >
+                  <Upload size={14} /> Excel Yükle
+                </button>
+                <input
+                  ref={userExcelFileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleUserExcelUpload}
+                  className="hidden"
+                />
+              </>
             )}
           </div>
         </div>
