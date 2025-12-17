@@ -19,9 +19,22 @@ import {
 
 const App: React.FC = () => {
   // --- Global State ---
-  const [session, setSession] = useState<SessionState>({
-    isAuthenticated: false,
-    currentUser: null,
+  // Session state'ini localStorage'dan yükle
+  const [session, setSession] = useState<SessionState>(() => {
+    if (typeof window !== 'undefined') {
+      const savedSession = localStorage.getItem('geds_session');
+      if (savedSession) {
+        try {
+          return JSON.parse(savedSession);
+        } catch (e) {
+          console.error('Error parsing saved session:', e);
+        }
+      }
+    }
+    return {
+      isAuthenticated: false,
+      currentUser: null,
+    };
   });
 
   const [events, setEvents] = useState<Event[]>([]);
@@ -175,10 +188,13 @@ const App: React.FC = () => {
   // --- Handlers (Now using Firestore) ---
 
   const handleLogin = (user: User) => {
-    setSession({
+    const newSession = {
       isAuthenticated: true,
       currentUser: user,
-    });
+    };
+    setSession(newSession);
+    // Session'ı localStorage'a kaydet
+    localStorage.setItem('geds_session', JSON.stringify(newSession));
   };
 
   const handleLogout = () => {
@@ -187,6 +203,8 @@ const App: React.FC = () => {
       currentUser: null,
     });
     setActiveEventId(null);
+    // Session'ı localStorage'dan temizle
+    localStorage.removeItem('geds_session');
   };
 
   const handleAddEvent = async (event: Event) => {
