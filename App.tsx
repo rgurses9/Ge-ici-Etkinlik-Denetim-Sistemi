@@ -573,9 +573,14 @@ const App: React.FC = () => {
       ? activeEvent.companies?.find(c => c.id === activeCompanyId)
       : undefined;
 
-    // Scanned entries'i filtrele - eğer şirket seçilmişse sadece o şirketin kayıtlarını göster
+    // Scanned entries'i filtrele
+    // Eğer şirket seçilmişse:
+    // - O şirkete ait kayıtları göster (entry.companyId === activeCompanyId)
+    // - VEYA companyId'si olmayan kayıtları da göster (geriye dönük uyumluluk için)
     const currentList = activeCompanyId
-      ? (scannedEntries[activeEventId] || []).filter(entry => entry.companyId === activeCompanyId)
+      ? (scannedEntries[activeEventId] || []).filter(entry =>
+        entry.companyId === activeCompanyId || !entry.companyId
+      )
       : scannedEntries[activeEventId] || [];
 
     return (
