@@ -277,7 +277,7 @@ const App: React.FC = () => {
       return;
     }
 
-    console.log('🔄 Loading passive events...');
+    console.log('🔄 Loading last 50 passive events...');
     try {
       // 1. Toplam pasif etkinlik sayısını al
       const countQuery = query(
@@ -289,42 +289,22 @@ const App: React.FC = () => {
       setTotalPassiveCount(totalCount);
       console.log(`📊 Total passive events: ${totalCount}`);
 
-      // 2. Son 5 günün pasif etkinliklerini al
-      // Bugünden 5 gün öncesinin başlangıcını hesapla
-      const today = new Date();
-      today.setHours(23, 59, 59, 999); // Bugünün sonu
-
-      const fiveDaysAgo = new Date();
-      fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
-      fiveDaysAgo.setHours(0, 0, 0, 0); // 5 gün öncesinin başlangıcı
-
-      console.log(`📅 Loading passive events from ${fiveDaysAgo.toLocaleDateString()} to ${today.toLocaleDateString()}`);
-
-      // Tüm pasif etkinlikleri çek (tarih filtrelemesi client-side yapılacak)
+      // 2. Son 50 pasif etkinliği al (endDate'e göre azalan sırada)
       const q = query(
         collection(db, 'events'),
-        where('status', '==', 'PASSIVE')
+        where('status', '==', 'PASSIVE'),
+        orderBy('endDate', 'desc'),
+        limit(50)
       );
 
       const snapshot = await getDocs(q);
-      let fetchedPassive: Event[] = snapshot.docs.map(doc => doc.data() as Event);
-
-      // Client-side filtering: Son 5 günün etkinliklerini filtrele
-      fetchedPassive = fetchedPassive.filter(event => {
-        const eventEndDate = new Date(event.endDate);
-        return eventEndDate >= fiveDaysAgo && eventEndDate <= today;
-      });
-
-      // Client-side sorting (endDate'e göre azalan sırada)
-      fetchedPassive = fetchedPassive.sort((a, b) =>
-        new Date(b.endDate).getTime() - new Date(a.endDate).getTime()
-      );
+      const fetchedPassive: Event[] = snapshot.docs.map(doc => doc.data() as Event);
 
       setPassiveEvents(fetchedPassive);
       setPassiveEventsLoaded(true);
 
       // 3. Bu pasif etkinliklerin scanned_entries kayıtlarını da yükle
-      console.log('🔄 Loading scanned entries for passive events...');
+      console.log('🔄 Loading scanned entries for last 50 passive events...');
       const eventIds = fetchedPassive.map(e => e.id);
 
       if (eventIds.length > 0) {
@@ -363,7 +343,7 @@ const App: React.FC = () => {
 
       // Cache'e kaydet
       localStorage.setItem('geds_passive_cache', JSON.stringify(fetchedPassive));
-      console.log(`✅ Passive events loaded: ${fetchedPassive.length} of ${totalCount} (last 5 days)`);
+      console.log(`✅ Passive events loaded: ${fetchedPassive.length} of ${totalCount} (last 50 events)`);
     } catch (error: any) {
       console.error('❌ Error loading passive events:', error);
       if (error.code === 'resource-exhausted' || error.message?.includes('quota')) {
