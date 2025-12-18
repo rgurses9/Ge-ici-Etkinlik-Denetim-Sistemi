@@ -874,7 +874,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
                   {lastScanResult.citizen && (
                     <div className="text-xs opacity-90 mt-0.5">
                       <p>{lastScanResult.citizen.name} {lastScanResult.citizen.surname}</p>
-                      <p className="font-mono mt-0.5 text-gray-600 dark:text-gray-300 scale-90 origin-left">Geçerlilik Tarihi: {lastScanResult.citizen.validityDate}</p>
+                      <p className="mt-0.5 text-gray-600 dark:text-gray-300 scale-90 origin-left">Geçerlilik Tarihi: {lastScanResult.citizen.validityDate}</p>
                     </div>
                   )}
                 </div>
@@ -926,11 +926,11 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
                   return (
                     <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                       <td className="px-3 py-1.5 text-gray-500 dark:text-gray-400">{index + 1}</td>
-                      <td className="px-3 py-1.5 text-gray-900 dark:text-gray-200 font-mono">{entry.citizen.tc}</td>
+                      <td className="px-3 py-1.5 text-gray-900 dark:text-gray-200">{entry.citizen.tc}</td>
                       <td className="px-3 py-1.5 text-gray-900 dark:text-gray-200 font-medium">
                         {entry.citizen.name} {entry.citizen.surname}
                       </td>
-                      <td className="px-3 py-1.5 text-gray-500 dark:text-gray-400 font-mono">
+                      <td className="px-3 py-1.5 text-gray-500 dark:text-gray-400">
                         {entry.citizen.validityDate}
                       </td>
                       <td className="px-3 py-1.5">
