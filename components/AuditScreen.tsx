@@ -214,14 +214,28 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
   // Completion Warning State (Moved Inside)
   const [showCompletionWarning, setShowCompletionWarning] = useState(false);
-  const prevCountRef = useRef(scannedList.length);
+  const prevTotalCountRef = useRef(0);
 
   useEffect(() => {
-    if (scannedList.length === event.targetCount && scannedList.length > prevCountRef.current) {
-      setShowCompletionWarning(true);
+    // Birden fazla şirket varsa, TÜM şirketlerin toplam hedefini kontrol et
+    if (event.companies && event.companies.length > 0) {
+      const totalTargetCount = event.companies.reduce((sum, company) => sum + company.targetCount, 0);
+      const allEventScans = allScannedEntries[event.id] || [];
+      const totalScannedCount = allEventScans.length;
+
+      if (totalScannedCount === totalTargetCount && totalScannedCount > prevTotalCountRef.current) {
+        setShowCompletionWarning(true);
+      }
+      prevTotalCountRef.current = totalScannedCount;
+    } else {
+      // Tek şirket veya şirket yok - mevcut şirketin hedefini kontrol et
+      const currentTargetCount = activeCompany ? activeCompany.targetCount : event.targetCount;
+      if (scannedList.length === currentTargetCount && scannedList.length > prevTotalCountRef.current) {
+        setShowCompletionWarning(true);
+      }
+      prevTotalCountRef.current = scannedList.length;
     }
-    prevCountRef.current = scannedList.length;
-  }, [scannedList.length, event.targetCount]);
+  }, [scannedList.length, allScannedEntries, event.companies, event.targetCount, event.id, activeCompany]);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -287,8 +301,14 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       return;
     }
 
-    if (scannedList.length >= event.targetCount) {
-      setLastScanResult({ status: 'ERROR', message: 'Hedef kişi sayısına ulaşıldı. Daha fazla kayıt yapılamaz. Denetlemeyi bitir' });
+    // Şirket varsa o şirketin hedefini kontrol et, yoksa event'in hedefini kontrol et
+    const currentTargetCount = activeCompany ? activeCompany.targetCount : event.targetCount;
+
+    if (scannedList.length >= currentTargetCount) {
+      const message = activeCompany
+        ? `${activeCompany.name} şirketi için hedef kişi sayısına ulaşıldı (${currentTargetCount}). Daha fazla kayıt yapılamaz.`
+        : 'Hedef kişi sayısına ulaşıldı. Daha fazla kayıt yapılamaz. Denetlemeyi bitir';
+      setLastScanResult({ status: 'ERROR', message });
       setTcInput('');
       return;
     }
@@ -471,8 +491,13 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
           continue;
         }
 
-        if (currentScannedCount + newEntries.length >= event.targetCount) {
-          errorMsg = 'Hedef limite ulaşıldı.';
+        // Şirket varsa o şirketin hedefini kontrol et, yoksa event'in hedefini kontrol et
+        const currentTargetCount = activeCompany ? activeCompany.targetCount : event.targetCount;
+
+        if (currentScannedCount + newEntries.length >= currentTargetCount) {
+          errorMsg = activeCompany
+            ? `${activeCompany.name} şirketi için hedef limite ulaşıldı (${currentTargetCount}).`
+            : 'Hedef limite ulaşıldı.';
           break;
         }
 
@@ -654,7 +679,22 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   // Şirket varsa o şirketin hedefine göre, yoksa event'in hedefine göre hesapla
   const targetCount = activeCompany ? activeCompany.targetCount : event.targetCount;
   const progressPercentage = Math.min(100, Math.round((scannedList.length / targetCount) * 100));
-  const isTargetReached = scannedList.length >= targetCount;
+
+  // "Denetimi Bitir" butonu için kontrol:
+  // - Eğer etkinlikte birden fazla şirket varsa, TÜM şirketlerin toplam hedefine ulaşılmalı
+  // - Eğer tek şirket veya şirket yoksa, o şirketin/event'in hedefine ulaşılmalı
+  let isTargetReached = false;
+  if (event.companies && event.companies.length > 0) {
+    // Birden fazla şirket var - TÜM şirketlerin toplam hedefini kontrol et
+    const totalTargetCount = event.companies.reduce((sum, company) => sum + company.targetCount, 0);
+    const allEventScans = allScannedEntries[event.id] || [];
+    const totalScannedCount = allEventScans.length;
+    isTargetReached = totalScannedCount >= totalTargetCount;
+  } else {
+    // Tek şirket veya şirket yok - mevcut hedefi kontrol et
+    isTargetReached = scannedList.length >= targetCount;
+  }
+
   const currentUserScanCount = scannedList.filter(s => s.recordedBy === currentUser.username).length;
 
   if (showSummary) {
@@ -718,8 +758,18 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
           </div>
           <button
             onClick={() => {
-              const isTargetReached = scannedList.length >= event.targetCount;
-              onExit(isTargetReached ? { targetReached: true, startTime } : undefined);
+              // Birden fazla şirket varsa, TÜM şirketlerin toplam hedefini kontrol et
+              let shouldAutoComplete = false;
+              if (event.companies && event.companies.length > 0) {
+                const totalTargetCount = event.companies.reduce((sum, company) => sum + company.targetCount, 0);
+                const allEventScans = allScannedEntries[event.id] || [];
+                shouldAutoComplete = allEventScans.length >= totalTargetCount;
+              } else {
+                const currentTargetCount = activeCompany ? activeCompany.targetCount : event.targetCount;
+                shouldAutoComplete = scannedList.length >= currentTargetCount;
+              }
+
+              onExit(shouldAutoComplete ? { targetReached: true, startTime } : undefined);
             }}
             className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
           >
