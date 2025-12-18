@@ -2235,7 +2235,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       return (
                         <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                           <td className="px-4 sm:px-6 py-3 text-gray-500 dark:text-gray-400">{index + 1}</td>
-                          <td className="px-4 sm:px-6 py-3 font-mono text-gray-900 dark:text-gray-200">{entry.citizen.tc}</td>
+                          <td className="px-4 sm:px-6 py-3 text-gray-900 dark:text-gray-200">{entry.citizen.tc}</td>
                           <td className="px-4 sm:px-6 py-3 font-medium text-gray-900 dark:text-gray-200">{entry.citizen.name} {entry.citizen.surname}</td>
                           <td className="hidden sm:table-cell px-6 py-3">
                             <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${status.bg} ${status.color}`}>
