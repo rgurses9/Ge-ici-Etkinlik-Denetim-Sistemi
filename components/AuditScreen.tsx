@@ -301,13 +301,30 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       return;
     }
 
+    // İlk olarak, birden fazla şirket varsa TOPLAM etkinlik hedefini kontrol et
+    if (event.companies && event.companies.length > 0) {
+      const totalEventTarget = event.companies.reduce((sum, company) => sum + company.targetCount, 0);
+      const allEventScans = allScannedEntries[event.id] || [];
+      const totalEventCount = allEventScans.length;
+
+      if (totalEventCount >= totalEventTarget) {
+        setLastScanResult({
+          status: 'ERROR',
+          message: `Etkinliğin toplam hedef kişi sayısına ulaşıldı (${totalEventCount}/${totalEventTarget}). Daha fazla kayıt yapılamaz.`
+        });
+        setTcInput('');
+        return;
+      }
+    }
+
     // Şirket varsa o şirketin hedefini kontrol et, yoksa event'in hedefini kontrol et
     const currentTargetCount = activeCompany ? activeCompany.targetCount : event.targetCount;
 
+    // Hedef sayıya ulaşıldıysa yeni kayıt yapılmasını engelle
     if (scannedList.length >= currentTargetCount) {
       const message = activeCompany
-        ? `${activeCompany.name} şirketi için hedef kişi sayısına ulaşıldı (${currentTargetCount}). Daha fazla kayıt yapılamaz.`
-        : 'Hedef kişi sayısına ulaşıldı. Daha fazla kayıt yapılamaz. Denetlemeyi bitir';
+        ? `${activeCompany.name} şirketi için hedef kişi sayısına ulaşıldı (${scannedList.length}/${currentTargetCount}). Daha fazla kayıt yapılamaz.`
+        : `Hedef kişi sayısına ulaşıldı (${scannedList.length}/${currentTargetCount}). Daha fazla kayıt yapılamaz. Denetlemeyi bitir`;
       setLastScanResult({ status: 'ERROR', message });
       setTcInput('');
       return;
@@ -491,13 +508,27 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
           continue;
         }
 
+        // İlk olarak, birden fazla şirket varsa TOPLAM etkinlik hedefini kontrol et
+        if (event.companies && event.companies.length > 0) {
+          const totalEventTarget = event.companies.reduce((sum, company) => sum + company.targetCount, 0);
+          const allEventScans = allScannedEntries[event.id] || [];
+          const totalEventCount = allEventScans.length + newEntries.length;
+
+          if (totalEventCount >= totalEventTarget) {
+            errorMsg = `Etkinliğin toplam hedef kişi sayısına ulaşıldı (${totalEventCount}/${totalEventTarget}).`;
+            break;
+          }
+        }
+
         // Şirket varsa o şirketin hedefini kontrol et, yoksa event'in hedefini kontrol et
         const currentTargetCount = activeCompany ? activeCompany.targetCount : event.targetCount;
 
+        // Hedef sayıya ulaşıldıysa yeni kayıt yapılmasını engelle
         if (currentScannedCount + newEntries.length >= currentTargetCount) {
+          const currentTotal = currentScannedCount + newEntries.length;
           errorMsg = activeCompany
-            ? `${activeCompany.name} şirketi için hedef limite ulaşıldı (${currentTargetCount}).`
-            : 'Hedef limite ulaşıldı.';
+            ? `${activeCompany.name} şirketi için hedef limite ulaşıldı (${currentTotal}/${currentTargetCount}).`
+            : `Hedef limite ulaşıldı (${currentTotal}/${currentTargetCount}).`;
           break;
         }
 

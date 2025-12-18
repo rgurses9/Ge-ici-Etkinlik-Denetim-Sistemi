@@ -970,14 +970,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <div className="flex items-center gap-3 mt-2 text-xs text-gray-500 dark:text-gray-400">
                             <span>Hedef: {event.targetCount}</span>
                             <span>•</span>
-                            <span className={actualCount >= event.targetCount ? "text-green-600 dark:text-green-400 font-medium" : ""}>
+                            <span className={actualCount > event.targetCount ? "text-red-600 dark:text-red-400 font-bold" : actualCount >= event.targetCount ? "text-green-600 dark:text-green-400 font-medium" : ""}>
                               {actualCount} / {event.targetCount}
                             </span>
                           </div>
                           {/* Progress Bar in Card */}
                           <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1 mt-1.5 max-w-xs">
                             <div
-                              className="bg-blue-600 dark:bg-blue-500 h-1 rounded-full transition-all duration-500"
+                              className={`h-1 rounded-full transition-all duration-500 ${actualCount > event.targetCount ? 'bg-red-600 dark:bg-red-500' : 'bg-blue-600 dark:bg-blue-500'}`}
                               style={{ width: `${Math.min(100, (actualCount / event.targetCount) * 100)}%` }}
                             ></div>
                           </div>
@@ -1071,16 +1071,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                       <div onClick={() => handleStartAuditClick(event.id)} className="cursor-pointer">
                         <h4 className="text-sm font-bold text-gray-900 dark:text-white group-hover:text-green-700 dark:group-hover:text-green-400 truncate pr-8">{event.name}</h4>
-                        <div className="mt-1.5 flex justify-between text-xs text-gray-500 dark:text-gray-400">
-                          <span>Doluluk</span>
-                          <span className="font-mono">{scannedEntries[event.id]?.length || 0} / {event.targetCount}</span>
-                        </div>
-                        <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1 mt-1.5">
-                          <div
-                            className="bg-green-500 h-1 rounded-full"
-                            style={{ width: `${Math.min(100, ((scannedEntries[event.id]?.length || 0) / event.targetCount) * 100)}%` }}
-                          ></div>
-                        </div>
+                        {(() => {
+                          const totalScanned = scannedEntries[event.id]?.length || 0;
+                          const totalTarget = event.targetCount;
+                          const isOverTarget = totalScanned > totalTarget;
+
+                          return (
+                            <>
+                              <div className="mt-1.5 flex justify-between text-xs text-gray-500 dark:text-gray-400">
+                                <span>Doluluk</span>
+                                <span className={`font-mono ${isOverTarget ? 'text-red-600 dark:text-red-400 font-bold' : ''}`}>
+                                  {totalScanned} / {totalTarget}
+                                </span>
+                              </div>
+                              <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1 mt-1.5">
+                                <div
+                                  className={`h-1 rounded-full ${isOverTarget ? 'bg-red-500' : 'bg-green-500'}`}
+                                  style={{ width: `${Math.min(100, (totalScanned / totalTarget) * 100)}%` }}
+                                ></div>
+                              </div>
+                            </>
+                          );
+                        })()}
 
                         {/* Company Stats (if companies exist) */}
                         {event.companies && event.companies.length > 0 && (
@@ -1094,6 +1106,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               ) || [];
                               const companyCount = companyScans.length;
                               const companyPercentage = Math.round((companyCount / company.targetCount) * 100);
+                              const isOverTarget = companyCount > company.targetCount;
 
                               return (
                                 <div key={company.id} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 p-2 rounded-lg">
@@ -1106,13 +1119,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                         {company.name}
                                       </span>
                                     </div>
-                                    <span className="text-[9px] font-mono text-gray-500 dark:text-gray-400">
+                                    <span className={`text-[9px] font-mono ${isOverTarget ? 'text-red-600 dark:text-red-400 font-bold' : 'text-gray-500 dark:text-gray-400'}`}>
                                       {companyCount}/{company.targetCount} ({companyPercentage}%)
                                     </span>
                                   </div>
                                   <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-0.5">
                                     <div
-                                      className="bg-green-500 h-0.5 rounded-full transition-all"
+                                      className={`h-0.5 rounded-full transition-all ${isOverTarget ? 'bg-red-500' : 'bg-green-500'}`}
                                       style={{ width: `${Math.min(100, companyPercentage)}%` }}
                                     ></div>
                                   </div>
