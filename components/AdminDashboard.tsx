@@ -6,6 +6,7 @@ interface AdminDashboardProps {
   currentUser: User;
   events: Event[];
   passiveEvents: Event[];
+  totalPassiveCount: number;
   onLoadPassiveEvents: () => Promise<void>;
   users: User[];
   scannedEntries: Record<string, ScanEntry[]>;
@@ -26,6 +27,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   currentUser,
   events,
   passiveEvents,
+  totalPassiveCount,
   onLoadPassiveEvents,
   users,
   scannedEntries,
@@ -1149,7 +1151,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div className="flex items-center gap-2">
                     <Archive className="text-gray-500 dark:text-gray-400" size={20} />
                     <h3 className="text-lg font-bold text-gray-800 dark:text-white">
-                      Pasif Etkinlikler {passiveEvents.length > 0 && `(${passiveEvents.length})`}
+                      Pasif Etkinlikler
+                      {totalPassiveCount > 0 && (
+                        <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
+                          (Toplam {totalPassiveCount} denetim - Son 5 günün {passiveEvents.length} kaydı)
+                        </span>
+                      )}
                     </h3>
                   </div>
                   {passiveEvents.length === 0 && (
@@ -1194,55 +1201,89 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           {isExpanded && (
                             <div className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30">
                               <div className="p-3 space-y-2">
-                                {monthEvents.map(event => (
-                                  <div key={event.id} className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                                    <div className="w-full sm:w-auto">
-                                      <h4 className="font-bold text-sm text-gray-700 dark:text-gray-300">{event.name}</h4>
-                                      <div className="flex flex-wrap items-center gap-2 mt-1">
-                                        <p className="text-xs text-gray-500 dark:text-gray-400">Tamamlandı • {scannedEntries[event.id]?.length || 0}/{event.targetCount}</p>
-                                        {event.completionDuration && (
-                                          <p className="text-xs text-gray-600 dark:text-gray-400 font-mono flex items-center gap-1 bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded">
-                                            <Clock size={10} /> {event.completionDuration}
-                                          </p>
-                                        )}
+                                {monthEvents.map(event => {
+                                  const eventScans = scannedEntries[event.id] || [];
+                                  const displayLimit = 10; // İlk 10 TC'yi göster
+                                  const displayedScans = eventScans.slice(0, displayLimit);
+                                  const remainingCount = eventScans.length - displayLimit;
+
+                                  return (
+                                    <div key={event.id} className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3 shadow-sm">
+                                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-2">
+                                        <div className="w-full sm:w-auto">
+                                          <h4 className="font-bold text-sm text-gray-700 dark:text-gray-300">{event.name}</h4>
+                                          <div className="flex flex-wrap items-center gap-2 mt-1">
+                                            <p className="text-xs text-gray-500 dark:text-gray-400">Tamamlandı • {eventScans.length}/{event.targetCount}</p>
+                                            {event.completionDuration && (
+                                              <p className="text-xs text-gray-600 dark:text-gray-400 font-mono flex items-center gap-1 bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded">
+                                                <Clock size={10} /> {event.completionDuration}
+                                              </p>
+                                            )}
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                                          <button
+                                            onClick={() => setViewingEvent(event)}
+                                            className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                                            title="Listeyi Gör"
+                                          >
+                                            <Eye size={18} />
+                                          </button>
+                                          {isAdmin && (
+                                            <>
+                                              <button
+                                                onClick={() => openEditEventModal(event)}
+                                                className="p-2 text-blue-400 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                                title="Etkinliği Düzenle"
+                                              >
+                                                <Edit size={18} />
+                                              </button>
+                                              <button
+                                                onClick={() => onReactivateEvent(event.id)}
+                                                className="p-2 text-blue-400 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                                title="Denetimi Tekrar Aktif Et"
+                                              >
+                                                <RefreshCw size={18} />
+                                              </button>
+                                              <button
+                                                onClick={() => handleDeleteClick(event)}
+                                                className="p-2 text-red-400 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
+                                                title="Etkinliği Sil"
+                                              >
+                                                <Trash2 size={18} />
+                                              </button>
+                                            </>
+                                          )}
+                                        </div>
                                       </div>
-                                    </div>
-                                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                                      <button
-                                        onClick={() => setViewingEvent(event)}
-                                        className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-                                        title="Listeyi Gör"
-                                      >
-                                        <Eye size={18} />
-                                      </button>
-                                      {isAdmin && (
-                                        <>
-                                          <button
-                                            onClick={() => openEditEventModal(event)}
-                                            className="p-2 text-blue-400 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                                            title="Etkinliği Düzenle"
-                                          >
-                                            <Edit size={18} />
-                                          </button>
-                                          <button
-                                            onClick={() => onReactivateEvent(event.id)}
-                                            className="p-2 text-blue-400 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                                            title="Denetimi Tekrar Aktif Et"
-                                          >
-                                            <RefreshCw size={18} />
-                                          </button>
-                                          <button
-                                            onClick={() => handleDeleteClick(event)}
-                                            className="p-2 text-red-400 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
-                                            title="Etkinliği Sil"
-                                          >
-                                            <Trash2 size={18} />
-                                          </button>
-                                        </>
+
+                                      {/* Okutulan TC'ler */}
+                                      {eventScans.length > 0 && (
+                                        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+                                          <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">
+                                            Okutulan TC'ler:
+                                          </p>
+                                          <div className="flex flex-wrap gap-1.5">
+                                            {displayedScans.map((scan, idx) => (
+                                              <span
+                                                key={scan.id}
+                                                className="inline-flex items-center px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-[10px] font-mono"
+                                                title={`${scan.citizen.name} ${scan.citizen.surname}`}
+                                              >
+                                                {scan.citizen.tc}
+                                              </span>
+                                            ))}
+                                            {remainingCount > 0 && (
+                                              <span className="inline-flex items-center px-2 py-0.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded text-[10px] font-semibold">
+                                                ... ve {remainingCount} kişi daha
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
                                       )}
                                     </div>
-                                  </div>
-                                ))}
+                                  );
+                                })}
                               </div>
                             </div>
                           )}

@@ -86,6 +86,7 @@ const App: React.FC = () => {
     return [];
   });
   const [passiveEventsLoaded, setPassiveEventsLoaded] = useState(false);
+  const [totalPassiveCount, setTotalPassiveCount] = useState(0); // Toplam pasif etkinlik sayısı
 
   // Loading state - artık gerek yok, cache kullanıyoruz
   // const [isLoadingData, setIsLoadingData] = useState(true);
@@ -228,7 +229,7 @@ const App: React.FC = () => {
     // SADECE son 500 kayıt (reads azaltmak için)
     const q = query(
       collection(db, 'scanned_entries'),
-      orderBy('timestamp', 'desc'),
+      orderBy('id', 'desc'),
       limit(500)
     );
     const unsubEntries = onSnapshot(
@@ -278,15 +279,41 @@ const App: React.FC = () => {
 
     console.log('🔄 Loading passive events...');
     try {
-      // orderBy kaldırıldı - indeks gerektirmez, client-side sorting yapacağız
+      // 1. Toplam pasif etkinlik sayısını al
+      const countQuery = query(
+        collection(db, 'events'),
+        where('status', '==', 'PASSIVE')
+      );
+      const countSnapshot = await getDocs(countQuery);
+      const totalCount = countSnapshot.size;
+      setTotalPassiveCount(totalCount);
+      console.log(`📊 Total passive events: ${totalCount}`);
+
+      // 2. Son 5 günün pasif etkinliklerini al
+      // Bugünden 5 gün öncesinin başlangıcını hesapla
+      const today = new Date();
+      today.setHours(23, 59, 59, 999); // Bugünün sonu
+
+      const fiveDaysAgo = new Date();
+      fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+      fiveDaysAgo.setHours(0, 0, 0, 0); // 5 gün öncesinin başlangıcı
+
+      console.log(`📅 Loading passive events from ${fiveDaysAgo.toLocaleDateString()} to ${today.toLocaleDateString()}`);
+
+      // Tüm pasif etkinlikleri çek (tarih filtrelemesi client-side yapılacak)
       const q = query(
         collection(db, 'events'),
-        where('status', '==', 'PASSIVE'),
-        limit(100) // Sadece son 100 pasif etkinlik
+        where('status', '==', 'PASSIVE')
       );
 
       const snapshot = await getDocs(q);
       let fetchedPassive: Event[] = snapshot.docs.map(doc => doc.data() as Event);
+
+      // Client-side filtering: Son 5 günün etkinliklerini filtrele
+      fetchedPassive = fetchedPassive.filter(event => {
+        const eventEndDate = new Date(event.endDate);
+        return eventEndDate >= fiveDaysAgo && eventEndDate <= today;
+      });
 
       // Client-side sorting (endDate'e göre azalan sırada)
       fetchedPassive = fetchedPassive.sort((a, b) =>
@@ -296,9 +323,47 @@ const App: React.FC = () => {
       setPassiveEvents(fetchedPassive);
       setPassiveEventsLoaded(true);
 
+      // 3. Bu pasif etkinliklerin scanned_entries kayıtlarını da yükle
+      console.log('🔄 Loading scanned entries for passive events...');
+      const eventIds = fetchedPassive.map(e => e.id);
+
+      if (eventIds.length > 0) {
+        // Her etkinlik için scanned_entries'i çek
+        const scannedEntriesPromises = eventIds.map(async (eventId) => {
+          const scansQuery = query(
+            collection(db, 'scanned_entries'),
+            where('eventId', '==', eventId)
+          );
+          const scansSnapshot = await getDocs(scansQuery);
+          return scansSnapshot.docs.map(doc => doc.data() as ScanEntry);
+        });
+
+        const allScannedArrays = await Promise.all(scannedEntriesPromises);
+        const allScanned = allScannedArrays.flat();
+
+        // Mevcut scannedEntries ile birleştir
+        setScannedEntries(prev => {
+          const updated = { ...prev };
+          allScanned.forEach(entry => {
+            if (!updated[entry.eventId]) {
+              updated[entry.eventId] = [];
+            }
+            // Duplicate kontrolü
+            if (!updated[entry.eventId].find(e => e.id === entry.id)) {
+              updated[entry.eventId].push(entry);
+            }
+          });
+          // Cache'i güncelle
+          localStorage.setItem('geds_scanned_cache', JSON.stringify(updated));
+          return updated;
+        });
+
+        console.log(`✅ Loaded scanned entries for ${eventIds.length} passive events`);
+      }
+
       // Cache'e kaydet
       localStorage.setItem('geds_passive_cache', JSON.stringify(fetchedPassive));
-      console.log(`✅ Passive events loaded: ${fetchedPassive.length}`);
+      console.log(`✅ Passive events loaded: ${fetchedPassive.length} of ${totalCount} (last 5 days)`);
     } catch (error: any) {
       console.error('❌ Error loading passive events:', error);
       if (error.code === 'resource-exhausted' || error.message?.includes('quota')) {
@@ -338,6 +403,18 @@ const App: React.FC = () => {
   const handleDeleteEvent = async (id: string) => {
     try {
       await deleteDoc(doc(db, 'events', id));
+
+      // Silinen etkinliği passiveEvents state'inden de kaldır
+      setPassiveEvents(prev => {
+        const updated = prev.filter(e => e.id !== id);
+        // Cache'i de güncelle
+        localStorage.setItem('geds_passive_cache', JSON.stringify(updated));
+        return updated;
+      });
+
+      // Toplam pasif etkinlik sayısını da güncelle
+      setTotalPassiveCount(prev => Math.max(0, prev - 1));
+
       // Optionally delete related scans (batch delete usually required for many docs)
     } catch (e) {
       console.error("Error deleting event: ", e);
@@ -608,6 +685,7 @@ const App: React.FC = () => {
       currentUser={session.currentUser}
       events={events}
       passiveEvents={passiveEvents}
+      totalPassiveCount={totalPassiveCount}
       onLoadPassiveEvents={loadPassiveEvents}
       users={users}
       scannedEntries={scannedEntries}
