@@ -268,6 +268,71 @@ const App: React.FC = () => {
     return () => unsubEntries();
   }, [session.isAuthenticated]); // session.isAuthenticated değiştiğinde çalış
 
+  // 4. Cache'den yüklenen pasif etkinlikler için scanned entries'i yükle
+  useEffect(() => {
+    // Login olmamışsa veya pasif etkinlik yoksa çalışma
+    if (!session.isAuthenticated || passiveEvents.length === 0 || passiveEventsLoaded) {
+      return;
+    }
+
+    console.log('🔄 Loading scanned entries for cached passive events...');
+
+    const loadCachedPassiveScans = async () => {
+      try {
+        const eventIds = passiveEvents.map(e => e.id);
+
+        // Hangi etkinliklerin scanned entries'i eksik kontrol et
+        const missingEventIds = eventIds.filter(eventId => {
+          const existingEntries = scannedEntries[eventId];
+          return !existingEntries || existingEntries.length === 0;
+        });
+
+        if (missingEventIds.length === 0) {
+          console.log('✅ All cached passive events already have scanned entries');
+          return;
+        }
+
+        console.log(`📊 Loading scanned entries for ${missingEventIds.length} cached passive events...`);
+
+        // Sadece eksik olanlar için scanned_entries'i çek
+        const scannedEntriesPromises = missingEventIds.map(async (eventId) => {
+          const scansQuery = query(
+            collection(db, 'scanned_entries'),
+            where('eventId', '==', eventId)
+          );
+          const scansSnapshot = await getDocs(scansQuery);
+          return scansSnapshot.docs.map(doc => doc.data() as ScanEntry);
+        });
+
+        const allScannedArrays = await Promise.all(scannedEntriesPromises);
+        const allScanned = allScannedArrays.flat();
+
+        // Mevcut scannedEntries ile birleştir
+        setScannedEntries(prev => {
+          const updated = { ...prev };
+          allScanned.forEach(entry => {
+            if (!updated[entry.eventId]) {
+              updated[entry.eventId] = [];
+            }
+            // Duplicate kontrolü
+            if (!updated[entry.eventId].find(e => e.id === entry.id)) {
+              updated[entry.eventId].push(entry);
+            }
+          });
+          // Cache'i güncelle
+          localStorage.setItem('geds_scanned_cache', JSON.stringify(updated));
+          return updated;
+        });
+
+        console.log(`✅ Loaded scanned entries for ${missingEventIds.length} cached passive events (${allScanned.length} total entries)`);
+      } catch (error) {
+        console.error('❌ Error loading cached passive scans:', error);
+      }
+    };
+
+    loadCachedPassiveScans();
+  }, [session.isAuthenticated, passiveEvents.length]); // passiveEvents değiştiğinde çalış
+
   // --- Handlers (Now using Firestore) ---
 
   // Pasif etkinlikleri yükle (sadece gerektiğinde çağrılır)
@@ -308,7 +373,15 @@ const App: React.FC = () => {
       const eventIds = fetchedPassive.map(e => e.id);
 
       if (eventIds.length > 0) {
-        // Her etkinlik için scanned_entries'i çek
+        // Önce hangi etkinliklerin scanned entries'i eksik kontrol et
+        const missingEventIds = eventIds.filter(eventId => {
+          const existingEntries = scannedEntries[eventId];
+          return !existingEntries || existingEntries.length === 0;
+        });
+
+        console.log(`📊 Events with missing scanned entries: ${missingEventIds.length} of ${eventIds.length}`);
+
+        // Tüm etkinlikler için scanned_entries'i çek (eksik olanlar için de yükle)
         const scannedEntriesPromises = eventIds.map(async (eventId) => {
           const scansQuery = query(
             collection(db, 'scanned_entries'),
@@ -338,7 +411,7 @@ const App: React.FC = () => {
           return updated;
         });
 
-        console.log(`✅ Loaded scanned entries for ${eventIds.length} passive events`);
+        console.log(`✅ Loaded scanned entries for ${eventIds.length} passive events (${allScanned.length} total entries)`);
       }
 
       // Cache'e kaydet
