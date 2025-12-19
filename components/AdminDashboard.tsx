@@ -141,6 +141,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       ? newEventCompanies.reduce((sum, company) => sum + company.targetCount, 0)
       : newEventTarget;
 
+    // Hedef sayı kontrolü
+    if (finalTargetCount <= 0) {
+      alert('Hedef kişi sayısı 0\'dan büyük olmalıdır!');
+      return;
+    }
+
     const newEvent: Event = {
       id: Date.now().toString(),
       name: newEventName,
@@ -243,6 +249,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const finalTargetCount = editHasMultipleCompanies && editEventCompanies.length > 0
       ? editEventCompanies.reduce((sum, company) => sum + company.targetCount, 0)
       : editEventTarget;
+
+    // Hedef sayı kontrolü
+    if (finalTargetCount <= 0) {
+      alert('Hedef kişi sayısı 0\'dan büyük olmalıdır!');
+      return;
+    }
 
     const updatedEvent: Event = {
       ...editingEvent,
@@ -1466,12 +1478,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Hedef Kişi Sayısı</label>
                   <input
-                    type="text"
-                    inputMode="numeric"
+                    type="number"
+                    min="1"
                     value={editEventTarget || ''}
                     onChange={(e) => {
-                      const value = e.target.value.replace(/\D/g, '');
-                      setEditEventTarget(value ? parseInt(value) : 0);
+                      const value = parseInt(e.target.value) || 0;
+                      setEditEventTarget(value);
                     }}
                     className="w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 border border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-secondary-500 outline-none"
                     placeholder="Örn: 50"
@@ -1752,12 +1764,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Hedef Kişi Sayısı</label>
                   <input
-                    type="text"
-                    inputMode="numeric"
+                    type="number"
+                    min="1"
                     value={newEventTarget || ''}
                     onChange={(e) => {
-                      const value = e.target.value.replace(/\D/g, '');
-                      setNewEventTarget(value ? parseInt(value) : 0);
+                      const value = parseInt(e.target.value) || 0;
+                      setNewEventTarget(value);
                     }}
                     className="w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 border border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-secondary-500 outline-none"
                     placeholder="Örn: 50"
