@@ -21,6 +21,7 @@ interface AdminDashboardProps {
   onUpdateEvent: (event: Event) => void;
   isDarkMode: boolean;
   onToggleTheme: () => void;
+  onCleanDuplicates: (eventId: string) => void;
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({
@@ -41,7 +42,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onDeleteUser,
   onUpdateEvent,
   isDarkMode,
-  onToggleTheme
+  onToggleTheme,
+  onCleanDuplicates
 }) => {
   const [activeTab, setActiveTab] = useState<'EVENTS' | 'USERS'>('EVENTS');
   const [showEventModal, setShowEventModal] = useState(false);
@@ -1018,6 +1020,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               >
                                 <Edit size={16} />
                               </button>
+                              {actualCount > 0 && (
+                                <button
+                                  onClick={() => onCleanDuplicates(event.id)}
+                                  className="p-2 text-orange-400 hover:text-orange-600 dark:text-orange-400 dark:hover:text-orange-300 bg-orange-50 dark:bg-orange-900/20 hover:bg-orange-100 dark:hover:bg-orange-900/40 rounded-lg transition"
+                                  title="Mükerrer Kayıtları Temizle"
+                                >
+                                  <RefreshCw size={16} />
+                                </button>
+                              )}
                               <button
                                 onClick={() => handleDeleteClick(event)}
                                 className="p-2 text-red-400 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg transition"

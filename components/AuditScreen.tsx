@@ -333,7 +333,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     // Check existing in current company's list
     const alreadyScanned = scannedList.find(s => s.citizen.tc === trimmedTC);
     if (alreadyScanned) {
-      setLastScanResult({ status: 'ERROR', message: 'Bu kişi zaten bu şirket listesine eklendi.' });
+      setLastScanResult({ status: 'ERROR', message: '⚠️ MÜKERRER OKUMA HATASI! Bu TC kimlik numarası daha önce okutuldu.' });
       setTcInput('');
       return;
     }
