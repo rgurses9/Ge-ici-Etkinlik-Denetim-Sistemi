@@ -341,38 +341,27 @@ const App: React.FC = () => {
       return;
     }
 
-    console.log('🔄 Loading passive events from last 5 days...');
+    console.log('🔄 Loading ALL passive events...');
     try {
-      // 1. Toplam pasif etkinlik sayısını al
-      const countQuery = query(
-        collection(db, 'events'),
-        where('status', '==', 'PASSIVE')
-      );
-      const countSnapshot = await getDocs(countQuery);
-      const totalCount = countSnapshot.size;
-      setTotalPassiveCount(totalCount);
-      console.log(`📊 Total passive events: ${totalCount}`);
-
-      // 2. Son 5 günün pasif etkinliklerini al
-      const fiveDaysAgo = new Date();
-      fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
-      fiveDaysAgo.setHours(0, 0, 0, 0); // Günün başlangıcı
-
+      // 1. TÜM pasif etkinlikleri al (tarih sınırlaması YOK)
       const q = query(
         collection(db, 'events'),
         where('status', '==', 'PASSIVE'),
-        where('endDate', '>=', fiveDaysAgo.toISOString()),
         orderBy('endDate', 'desc')
       );
 
       const snapshot = await getDocs(q);
       const fetchedPassive: Event[] = snapshot.docs.map(doc => doc.data() as Event);
+      const totalCount = fetchedPassive.length;
 
+      setTotalPassiveCount(totalCount);
       setPassiveEvents(fetchedPassive);
       setPassiveEventsLoaded(true);
 
-      // 3. Bu pasif etkinliklerin scanned_entries kayıtlarını da yükle
-      console.log('🔄 Loading scanned entries for last 50 passive events...');
+      console.log(`📊 Total passive events loaded: ${totalCount}`);
+
+      // 2. Bu pasif etkinliklerin scanned_entries kayıtlarını da yükle
+      console.log('🔄 Loading scanned entries for all passive events...');
       const eventIds = fetchedPassive.map(e => e.id);
 
       if (eventIds.length > 0) {
@@ -419,7 +408,7 @@ const App: React.FC = () => {
 
       // Cache'e kaydet
       localStorage.setItem('geds_passive_cache', JSON.stringify(fetchedPassive));
-      console.log(`✅ Passive events loaded: ${fetchedPassive.length} of ${totalCount} (last 5 days)`);
+      console.log(`✅ All passive events loaded: ${fetchedPassive.length} total`);
     } catch (error: any) {
       console.error('❌ Error loading passive events:', error);
       if (error.code === 'resource-exhausted' || error.message?.includes('quota')) {
