@@ -341,7 +341,7 @@ const App: React.FC = () => {
       return;
     }
 
-    console.log('🔄 Loading last 50 passive events...');
+    console.log('🔄 Loading passive events from last 5 days...');
     try {
       // 1. Toplam pasif etkinlik sayısını al
       const countQuery = query(
@@ -353,12 +353,16 @@ const App: React.FC = () => {
       setTotalPassiveCount(totalCount);
       console.log(`📊 Total passive events: ${totalCount}`);
 
-      // 2. Son 50 pasif etkinliği al (endDate'e göre azalan sırada)
+      // 2. Son 5 günün pasif etkinliklerini al
+      const fiveDaysAgo = new Date();
+      fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+      fiveDaysAgo.setHours(0, 0, 0, 0); // Günün başlangıcı
+
       const q = query(
         collection(db, 'events'),
         where('status', '==', 'PASSIVE'),
-        orderBy('endDate', 'desc'),
-        limit(50)
+        where('endDate', '>=', fiveDaysAgo.toISOString()),
+        orderBy('endDate', 'desc')
       );
 
       const snapshot = await getDocs(q);
@@ -415,7 +419,7 @@ const App: React.FC = () => {
 
       // Cache'e kaydet
       localStorage.setItem('geds_passive_cache', JSON.stringify(fetchedPassive));
-      console.log(`✅ Passive events loaded: ${fetchedPassive.length} of ${totalCount} (last 50 events)`);
+      console.log(`✅ Passive events loaded: ${fetchedPassive.length} of ${totalCount} (last 5 days)`);
     } catch (error: any) {
       console.error('❌ Error loading passive events:', error);
       if (error.code === 'resource-exhausted' || error.message?.includes('quota')) {
