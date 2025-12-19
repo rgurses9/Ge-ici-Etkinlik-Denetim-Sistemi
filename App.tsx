@@ -225,12 +225,11 @@ const App: React.FC = () => {
       return;
     }
 
-    console.log('🔄 Starting Scanned Entries subscription (last 500 only)...');
-    // SADECE son 500 kayıt (reads azaltmak için)
+    console.log('🔄 Starting Scanned Entries subscription (ALL ENTRIES)...');
+    // TÜM kayıtları çek (limit kaldırıldı)
     const q = query(
       collection(db, 'scanned_entries'),
-      orderBy('id', 'desc'),
-      limit(500)
+      orderBy('id', 'desc')
     );
     const unsubEntries = onSnapshot(
       q,
