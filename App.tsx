@@ -539,19 +539,31 @@ const App: React.FC = () => {
 
   const handleScan = async (entry: ScanEntry) => {
     try {
-      // 1. Add Entry - Remove undefined fields before sending to Firestore
+      // 1. SERVER-SIDE VALIDATION: Check current count before saving
+      const event = events.find(e => e.id === entry.eventId);
+      if (!event) {
+        throw new Error('Etkinlik bulunamadı');
+      }
+
+      // Get current scanned entries count from Firebase
+      const scansQuery = query(
+        collection(db, 'scanned_entries'),
+        where('eventId', '==', entry.eventId)
+      );
+      const scansSnapshot = await getDocs(scansQuery);
+      const currentScannedCount = scansSnapshot.size;
+
+      // Check if target is reached
+      const targetCount = event.targetCount;
+      if (currentScannedCount >= targetCount) {
+        throw new Error(`Hedef sayıya ulaşıldı! (${currentScannedCount}/${targetCount}). Daha fazla kayıt yapılamaz.`);
+      }
+
+      // 2. Add Entry - Remove undefined fields before sending to Firestore
       const cleanEntry = Object.fromEntries(
         Object.entries(entry).filter(([_, value]) => value !== undefined)
       );
       await setDoc(doc(db, 'scanned_entries', entry.id), cleanEntry);
-
-      // 2. Increment Event Count (Optimistic or Transactional could be better, but simple update works here)
-      const event = events.find(e => e.id === entry.eventId);
-      if (event) {
-        await updateDoc(doc(db, 'events', entry.eventId), {
-          currentCount: event.currentCount + 1
-        });
-      }
 
       console.log('✅ TC başarıyla kaydedildi:', entry.citizen.tc);
     } catch (e: any) {
@@ -573,6 +585,27 @@ const App: React.FC = () => {
     const eventId = newEntries[0].eventId;
 
     try {
+      // SERVER-SIDE VALIDATION: Check current count before saving
+      const event = events.find(e => e.id === eventId);
+      if (!event) {
+        throw new Error('Etkinlik bulunamadı');
+      }
+
+      // Get current scanned entries count from Firebase
+      const scansQuery = query(
+        collection(db, 'scanned_entries'),
+        where('eventId', '==', eventId)
+      );
+      const scansSnapshot = await getDocs(scansQuery);
+      const currentScannedCount = scansSnapshot.size;
+
+      // Check if adding these entries would exceed target
+      const targetCount = event.targetCount;
+      const newTotal = currentScannedCount + newEntries.length;
+      if (newTotal > targetCount) {
+        throw new Error(`Hedef sayı aşılıyor! Mevcut: ${currentScannedCount}, Eklenecek: ${newEntries.length}, Hedef: ${targetCount}`);
+      }
+
       const batch = writeBatch(db);
 
       // Add all entries
@@ -584,15 +617,6 @@ const App: React.FC = () => {
         );
         batch.set(ref, cleanEntry);
       });
-
-      // Update event count
-      const event = events.find(e => e.id === eventId);
-      if (event) {
-        const eventRef = doc(db, 'events', eventId);
-        batch.update(eventRef, {
-          currentCount: event.currentCount + newEntries.length
-        });
-      }
 
       await batch.commit();
       console.log(`✅ ${newEntries.length} TC başarıyla kaydedildi`);
@@ -684,6 +708,69 @@ const App: React.FC = () => {
     }
   };
 
+  const handleCleanDuplicates = async (eventId: string) => {
+    if (!window.confirm('Bu etkinlikteki mükerrer kayıtları temizlemek istediğinize emin misiniz?\n\nAynı TC\'ye sahip kayıtlardan sadece ilki korunacak, diğerleri silinecek.')) {
+      return;
+    }
+
+    try {
+      console.log('🔄 Cleaning duplicates for event:', eventId);
+
+      // Get all entries for this event
+      const q = query(
+        collection(db, 'scanned_entries'),
+        where('eventId', '==', eventId)
+      );
+      const snapshot = await getDocs(q);
+      const entries = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ScanEntry & { id: string }));
+
+      console.log(`📊 Total entries: ${entries.length}`);
+
+      // Group by TC number
+      const tcGroups: Record<string, (ScanEntry & { id: string })[]> = {};
+      entries.forEach(entry => {
+        const tc = entry.citizen.tc;
+        if (!tcGroups[tc]) {
+          tcGroups[tc] = [];
+        }
+        tcGroups[tc].push(entry);
+      });
+
+      // Find duplicates
+      const duplicatesToDelete: string[] = [];
+      Object.entries(tcGroups).forEach(([tc, group]) => {
+        if (group.length > 1) {
+          // Keep the first one, delete the rest
+          console.log(`🔍 Found ${group.length} entries for TC ${tc}`);
+          for (let i = 1; i < group.length; i++) {
+            duplicatesToDelete.push(group[i].id);
+          }
+        }
+      });
+
+      if (duplicatesToDelete.length === 0) {
+        alert('✅ Bu etkinlikte mükerrer kayıt bulunamadı.');
+        return;
+      }
+
+      console.log(`🗑️ Deleting ${duplicatesToDelete.length} duplicate entries...`);
+
+      // Delete duplicates in batches
+      const batch = writeBatch(db);
+      duplicatesToDelete.forEach(id => {
+        batch.delete(doc(db, 'scanned_entries', id));
+      });
+
+      await batch.commit();
+
+      console.log(`✅ Deleted ${duplicatesToDelete.length} duplicate entries`);
+      alert(`✅ ${duplicatesToDelete.length} mükerrer kayıt temizlendi!\n\nKalan benzersiz kayıt: ${entries.length - duplicatesToDelete.length}`);
+    } catch (e: any) {
+      console.error('❌ Error cleaning duplicates:', e);
+      alert('Hata: ' + (e.message || e));
+    }
+  };
+
   // --- Render Logic ---
 
   if (!session.isAuthenticated || !session.currentUser) {
@@ -754,6 +841,7 @@ const App: React.FC = () => {
       onAddUser={handleAddUser}
       onUpdateUser={handleUpdateUser}
       onDeleteUser={handleDeleteUser}
+      onCleanDuplicates={handleCleanDuplicates}
       isDarkMode={isDarkMode}
       onToggleTheme={toggleTheme}
     />
