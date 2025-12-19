@@ -441,10 +441,17 @@ const App: React.FC = () => {
   };
 
   const handleAddEvent = async (event: Event) => {
+    console.log('📝 handleAddEvent called with:', event);
     try {
-      await setDoc(doc(db, 'events', event.id), event);
+      // Remove undefined fields (Firebase doesn't accept undefined)
+      const cleanEvent = Object.fromEntries(
+        Object.entries(event).filter(([_, value]) => value !== undefined)
+      );
+      await setDoc(doc(db, 'events', event.id), cleanEvent);
+      console.log('✅ Event saved to Firebase:', event.id);
     } catch (e) {
-      console.error("Error adding event: ", e);
+      console.error("❌ Error adding event: ", e);
+      alert('Etkinlik eklenirken hata oluştu: ' + (e as Error).message);
     }
   };
 
@@ -515,6 +522,7 @@ const App: React.FC = () => {
   };
 
   const handleFinishAndCloseAudit = async (duration: string) => {
+    console.log('🏁 Finishing audit for event:', activeEventId, 'Duration:', duration);
     if (activeEventId) {
       try {
         const eventRef = doc(db, 'events', activeEventId);
@@ -522,10 +530,33 @@ const App: React.FC = () => {
           status: 'PASSIVE',
           completionDuration: duration
         });
+        console.log('✅ Event marked as PASSIVE:', activeEventId);
+
+        // Pasif etkinlikleri otomatik yükle (eğer henüz yüklenmemişse)
+        if (!passiveEventsLoaded) {
+          console.log('🔄 Auto-loading passive events...');
+          await loadPassiveEvents();
+        } else {
+          // Eğer zaten yüklenmişse, sadece listeye ekle
+          const finishedEvent = events.find(e => e.id === activeEventId);
+          if (finishedEvent) {
+            const updatedEvent = {
+              ...finishedEvent,
+              status: 'PASSIVE' as const,
+              completionDuration: duration
+            };
+            setPassiveEvents(prev => [updatedEvent, ...prev]);
+            console.log('✅ Added to passive events list');
+          }
+        }
+
         setActiveEventId(null);
       } catch (e) {
-        console.error("Error finishing audit: ", e);
+        console.error("❌ Error finishing audit: ", e);
+        alert('Denetim bitirilemedi: ' + (e as Error).message);
       }
+    } else {
+      console.warn('⚠️ No active event ID found');
     }
   };
 
@@ -694,7 +725,11 @@ const App: React.FC = () => {
 
   const handleUpdateEvent = async (updatedEvent: Event) => {
     try {
-      await setDoc(doc(db, 'events', updatedEvent.id), updatedEvent);
+      // Remove undefined fields (Firebase doesn't accept undefined)
+      const cleanEvent = Object.fromEntries(
+        Object.entries(updatedEvent).filter(([_, value]) => value !== undefined)
+      );
+      await setDoc(doc(db, 'events', updatedEvent.id), cleanEvent);
     } catch (e) {
       console.error("Error updating event: ", e);
     }
