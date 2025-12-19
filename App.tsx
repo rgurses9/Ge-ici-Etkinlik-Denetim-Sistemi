@@ -346,12 +346,15 @@ const App: React.FC = () => {
       // 1. TÜM pasif etkinlikleri al (tarih sınırlaması YOK)
       const q = query(
         collection(db, 'events'),
-        where('status', '==', 'PASSIVE'),
-        orderBy('endDate', 'desc')
+        where('status', '==', 'PASSIVE')
+        // orderBy kaldırıldı - client-side sıralama yapılacak
       );
 
       const snapshot = await getDocs(q);
-      const fetchedPassive: Event[] = snapshot.docs.map(doc => doc.data() as Event);
+      // Client-side sorting by endDate (descending)
+      const fetchedPassive: Event[] = snapshot.docs
+        .map(doc => doc.data() as Event)
+        .sort((a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime());
       const totalCount = fetchedPassive.length;
 
       setTotalPassiveCount(totalCount);
