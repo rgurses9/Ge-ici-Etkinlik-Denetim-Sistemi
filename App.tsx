@@ -216,7 +216,7 @@ const App: React.FC = () => {
     return () => unsubEvents();
   }, [session.isAuthenticated]); // session.isAuthenticated değiştiğinde çalış
 
-  // 3. Scanned Entries Subscription
+  // 3. Scanned Entries Subscription - OPTIMIZED
   // SADECE authenticated kullanıcılar için çalıştır (reads azaltmak için)
   useEffect(() => {
     // Login olmamışsa Firebase'e bağlanma
@@ -225,15 +225,24 @@ const App: React.FC = () => {
       return;
     }
 
-    console.log('🔄 Starting Scanned Entries subscription (ALL ENTRIES)...');
-    // TÜM kayıtları çek (limit kaldırıldı)
+    console.log('🔄 Starting Scanned Entries subscription (RECENT 500 ENTRIES)...');
+    // SADECE son 500 kaydı çek (performans için)
     const q = query(
       collection(db, 'scanned_entries'),
-      orderBy('id', 'desc')
+      orderBy('id', 'desc'),
+      limit(500) // İlk yüklemede sadece son 500 kayıt
     );
+
+    // Debounce timer for localStorage writes
+    let saveTimer: NodeJS.Timeout | null = null;
+
     const unsubEntries = onSnapshot(
       q,
       (snapshot) => {
+        // Check if data is from cache or server
+        const source = snapshot.metadata.fromCache ? 'cache' : 'server';
+        console.log(`📊 Scanned entries loaded from ${source}: ${snapshot.docs.length} entries`);
+
         const fetchedEntries: ScanEntry[] = snapshot.docs.map(doc => doc.data() as ScanEntry);
 
         // Group by eventId
@@ -246,8 +255,15 @@ const App: React.FC = () => {
         });
 
         setScannedEntries(grouped);
-        // Scanned entries'i localStorage'a cache'le
-        localStorage.setItem('geds_scanned_cache', JSON.stringify(grouped));
+
+        // Debounced localStorage write (sadece server'dan gelen veriler için)
+        if (source === 'server') {
+          if (saveTimer) clearTimeout(saveTimer);
+          saveTimer = setTimeout(() => {
+            localStorage.setItem('geds_scanned_cache', JSON.stringify(grouped));
+            console.log('💾 Scanned entries cached to localStorage');
+          }, 1000); // 1 saniye bekle
+        }
       },
       (error) => {
         console.error("❌ Firebase Scanned Entries Error:", error);
@@ -264,7 +280,10 @@ const App: React.FC = () => {
       }
     );
 
-    return () => unsubEntries();
+    return () => {
+      unsubEntries();
+      if (saveTimer) clearTimeout(saveTimer);
+    };
   }, [session.isAuthenticated]); // session.isAuthenticated değiştiğinde çalış
 
   // 4. Cache'den yüklenen pasif etkinlikler için scanned entries'i yükle
@@ -376,18 +395,28 @@ const App: React.FC = () => {
 
         console.log(`📊 Events with missing scanned entries: ${missingEventIds.length} of ${eventIds.length}`);
 
-        // Tüm etkinlikler için scanned_entries'i çek (eksik olanlar için de yükle)
-        const scannedEntriesPromises = eventIds.map(async (eventId) => {
+        // BATCH OPTIMIZATION: 10 etkinlik gruplarında yükle (100+ sorgu yerine 10-20 sorgu)
+        const BATCH_SIZE = 10;
+        const allScanned: ScanEntry[] = [];
+
+        for (let i = 0; i < eventIds.length; i += BATCH_SIZE) {
+          const batchIds = eventIds.slice(i, i + BATCH_SIZE);
+          console.log(`🔄 Loading batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(eventIds.length / BATCH_SIZE)} (${batchIds.length} events)...`);
+
+          // Batch içindeki tüm etkinlikler için tek sorguda çek
           const scansQuery = query(
             collection(db, 'scanned_entries'),
-            where('eventId', '==', eventId)
+            where('eventId', 'in', batchIds)
           );
           const scansSnapshot = await getDocs(scansQuery);
-          return scansSnapshot.docs.map(doc => doc.data() as ScanEntry);
-        });
+          const batchScans = scansSnapshot.docs.map(doc => doc.data() as ScanEntry);
+          allScanned.push(...batchScans);
 
-        const allScannedArrays = await Promise.all(scannedEntriesPromises);
-        const allScanned = allScannedArrays.flat();
+          // Rate limiting: Her batch arasında kısa bekleme
+          if (i + BATCH_SIZE < eventIds.length) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        }
 
         // Mevcut scannedEntries ile birleştir
         setScannedEntries(prev => {
@@ -417,6 +446,33 @@ const App: React.FC = () => {
       if (error.code === 'resource-exhausted' || error.message?.includes('quota')) {
         alert('⚠️ Firebase Limit Aşıldı!\n\nPasif etkinlikler yüklenemedi.');
       }
+    }
+  };
+
+  // Belirli bir etkinlik için tüm kayıtları yükle (lazy loading)
+  const loadOlderEntriesForEvent = async (eventId: string) => {
+    try {
+      console.log(`🔄 Loading all entries for event: ${eventId}...`);
+      const scansQuery = query(
+        collection(db, 'scanned_entries'),
+        where('eventId', '==', eventId)
+      );
+      const scansSnapshot = await getDocs(scansQuery);
+      const entries = scansSnapshot.docs.map(doc => doc.data() as ScanEntry);
+
+      setScannedEntries(prev => {
+        const updated = { ...prev };
+        updated[eventId] = entries;
+        // Cache'i güncelle
+        localStorage.setItem('geds_scanned_cache', JSON.stringify(updated));
+        return updated;
+      });
+
+      console.log(`✅ Loaded ${entries.length} entries for event ${eventId}`);
+      return entries.length;
+    } catch (error) {
+      console.error('❌ Error loading older entries:', error);
+      return 0;
     }
   };
 
@@ -861,6 +917,7 @@ const App: React.FC = () => {
       passiveEvents={passiveEvents}
       totalPassiveCount={totalPassiveCount}
       onLoadPassiveEvents={loadPassiveEvents}
+      onLoadOlderEntriesForEvent={loadOlderEntriesForEvent}
       users={users}
       scannedEntries={scannedEntries}
       onLogout={handleLogout}

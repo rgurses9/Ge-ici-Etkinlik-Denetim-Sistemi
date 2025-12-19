@@ -8,6 +8,7 @@ interface AdminDashboardProps {
   passiveEvents: Event[];
   totalPassiveCount: number;
   onLoadPassiveEvents: () => Promise<void>;
+  onLoadOlderEntriesForEvent: (eventId: string) => Promise<number>;
   users: User[];
   scannedEntries: Record<string, ScanEntry[]>;
   onLogout: () => void;
@@ -30,6 +31,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   passiveEvents,
   totalPassiveCount,
   onLoadPassiveEvents,
+  onLoadOlderEntriesForEvent,
   users,
   scannedEntries,
   onLogout,
