@@ -813,7 +813,11 @@ const App: React.FC = () => {
 
   if (activeEventId) {
     const activeEvent = events.find(e => e.id === activeEventId);
-    if (!activeEvent) return <div>Hata: Etkinlik bulunamadı veya silindi.</div>;
+    if (!activeEvent) {
+      // Etkinlik bulunamadı - muhtemelen PASSIVE'e geçti, ana ekrana dön
+      setTimeout(() => setActiveEventId(null), 100);
+      return null; // Boş ekran göster (çok kısa süre)
+    }
 
     // Şirket varsa o şirkete ait company bilgisini bul
     const activeCompany = activeCompanyId
