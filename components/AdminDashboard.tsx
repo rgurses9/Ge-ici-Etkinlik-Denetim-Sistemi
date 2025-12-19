@@ -1293,30 +1293,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                         </div>
                                       </div>
 
-                                      {/* Okutulan TC'ler */}
-                                      {eventScans.length > 0 && (
-                                        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
-                                          <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">
-                                            Okutulan TC'ler:
-                                          </p>
-                                          <div className="flex flex-wrap gap-1.5">
-                                            {displayedScans.map((scan, idx) => (
-                                              <span
-                                                key={scan.id}
-                                                className="inline-flex items-center px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-[10px] font-mono"
-                                                title={`${scan.citizen.name} ${scan.citizen.surname}`}
-                                              >
-                                                {scan.citizen.tc}
-                                              </span>
-                                            ))}
-                                            {remainingCount > 0 && (
-                                              <span className="inline-flex items-center px-2 py-0.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded text-[10px] font-semibold">
-                                                ... ve {remainingCount} kişi daha
-                                              </span>
-                                            )}
-                                          </div>
-                                        </div>
-                                      )}
+
+                                      {/* Okutulan TC'ler kısmı kaldırıldı */}
                                     </div>
                                   );
                                 })}
