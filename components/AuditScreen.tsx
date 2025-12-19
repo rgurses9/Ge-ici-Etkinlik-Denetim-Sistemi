@@ -250,7 +250,23 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   // Fetch from Google Sheets
   useEffect(() => {
     const loadData = async () => {
-      setDbStatus('LOADING');
+      // 1. Önce cache'den yükle (hızlı)
+      const cachedData = localStorage.getItem('geds_workers_cache');
+      if (cachedData) {
+        try {
+          const cachedCitizens: Citizen[] = JSON.parse(cachedData);
+          const mergedDB = [...cachedCitizens, ...MOCK_CITIZEN_DB];
+          setDatabase(mergedDB);
+          setDbStatus('READY');
+          console.log('✅ Database loaded from cache:', cachedCitizens.length);
+        } catch (e) {
+          console.error('Cache parse error:', e);
+        }
+      } else {
+        setDbStatus('LOADING');
+      }
+
+      // 2. Arka planda Google Sheets'ten güncelle
       try {
         const workerRecords = await fetchSheetData();
 
@@ -277,12 +293,20 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
           setDatabase(mergedDB);
           setDbStatus('READY');
           onDatabaseUpdate(onlineCitizens);
+
+          // Cache'e kaydet
+          localStorage.setItem('geds_workers_cache', JSON.stringify(onlineCitizens));
+          console.log('✅ Database updated from Google Sheets:', onlineCitizens.length);
         } else {
-          setDbStatus('READY');
+          if (!cachedData) {
+            setDbStatus('READY');
+          }
         }
       } catch (e) {
         console.error("DB Load Error", e);
-        setDbStatus('ERROR');
+        if (!cachedData) {
+          setDbStatus('ERROR');
+        }
       }
     };
 
@@ -640,19 +664,45 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   const exportToExcel = async () => {
     const XLSX = await import('xlsx');
 
-    const dataToExport = scannedList.map(item => {
-      const status = checkWorkStatus(item.citizen.validityDate);
-      return {
-        "TC Kimlik No": item.citizen.tc,
-        "Ad": item.citizen.name,
-        "Soyad": item.citizen.surname,
-        "Geçerlilik Tarihi": item.citizen.validityDate,
-        "Durum": status.text,
-        "Okutma Saati": item.timestamp,
-        "Kaydeden": item.recordedBy,
-        "Etkinlik": event.name
-      };
-    });
+    // Eğer birden fazla şirket varsa, TÜM şirketlerin verilerini al
+    let dataToExport;
+
+    if (event.companies && event.companies.length > 0) {
+      // Birden fazla şirket var - TÜM etkinlik kayıtlarını al
+      const allEventScans = allScannedEntries[event.id] || [];
+
+      dataToExport = allEventScans.map(item => {
+        const status = checkWorkStatus(item.citizen.validityDate);
+        const company = event.companies?.find(c => c.id === item.companyId);
+
+        return {
+          "TC Kimlik No": item.citizen.tc,
+          "Ad": item.citizen.name,
+          "Soyad": item.citizen.surname,
+          "Geçerlilik Tarihi": item.citizen.validityDate,
+          "Durum": status.text,
+          "Okutma Saati": item.timestamp,
+          "Kaydeden": item.recordedBy,
+          "Etkinlik": event.name,
+          "Şirket": company ? company.name : 'Belirtilmemiş'
+        };
+      });
+    } else {
+      // Tek şirket - sadece mevcut listeyi al
+      dataToExport = scannedList.map(item => {
+        const status = checkWorkStatus(item.citizen.validityDate);
+        return {
+          "TC Kimlik No": item.citizen.tc,
+          "Ad": item.citizen.name,
+          "Soyad": item.citizen.surname,
+          "Geçerlilik Tarihi": item.citizen.validityDate,
+          "Durum": status.text,
+          "Okutma Saati": item.timestamp,
+          "Kaydeden": item.recordedBy,
+          "Etkinlik": event.name
+        };
+      });
+    }
 
     const ws = XLSX.utils.json_to_sheet(dataToExport);
     const wb = XLSX.utils.book_new();
