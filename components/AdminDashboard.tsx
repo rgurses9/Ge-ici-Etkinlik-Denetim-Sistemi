@@ -1245,11 +1245,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   const displayedScans = eventScans.slice(0, displayLimit);
                                   const remainingCount = eventScans.length - displayLimit;
 
+                                  // BELİRSİZ durumunda personel var mı kontrol et
+                                  const hasUncertainStatus = eventScans.some(entry => {
+                                    const status = checkWorkStatus(entry.citizen.validityDate);
+                                    return status.text === 'BELİRSİZ';
+                                  });
+
                                   return (
                                     <div key={event.id} className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3 shadow-sm">
                                       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-2">
                                         <div className="w-full sm:w-auto">
-                                          <h4 className="font-bold text-sm text-gray-700 dark:text-gray-300">{event.name}</h4>
+                                          <h4 className={`font-bold text-sm ${hasUncertainStatus ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300'}`}>
+                                            {event.name}
+                                            {hasUncertainStatus && (
+                                              <span className="ml-2 text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-2 py-0.5 rounded-full border border-red-200 dark:border-red-800" title="Bu etkinlikte belirsiz durumda personel var">
+                                                ⚠ Belirsiz Personel
+                                              </span>
+                                            )}
+                                          </h4>
                                           <div className="flex flex-wrap items-center gap-2 mt-1">
                                             <p className="text-xs text-gray-500 dark:text-gray-400">Tamamlandı • {eventScans.length}/{event.targetCount}</p>
                                             {event.completionDuration && (
