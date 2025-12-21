@@ -943,6 +943,15 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
             >
               <Download size={14} /> Excel'e Aktar
             </button>
+            {!isTargetReached && scannedList.length > 0 && (
+              <button
+                onClick={handleFinishAudit}
+                className="flex items-center gap-1.5 bg-orange-600 hover:bg-orange-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition"
+                title={`Mevcut ${scannedList.length} kişi ile denetimi bitir`}
+              >
+                <AlertCircle size={14} /> Eksik Personel ile Bitir
+              </button>
+            )}
             <button
               onClick={handleFinishAudit} disabled={!isTargetReached} className={`text-white px-3 py-1.5 rounded-lg text-xs font-medium transition ${isTargetReached
                 ? 'bg-red-600 hover:bg-red-700'
