@@ -15,7 +15,6 @@ import {
   query,
   orderBy,
   writeBatch,
-  limit,
   where,
   getDocs
 } from 'firebase/firestore';
@@ -225,12 +224,12 @@ const App: React.FC = () => {
       return;
     }
 
-    console.log('🔄 Starting Scanned Entries subscription (RECENT 500 ENTRIES)...');
-    // SADECE son 500 kaydı çek (performans için)
+    console.log('🔄 Starting Scanned Entries subscription (ALL ENTRIES)...');
+    // Tüm kayıtları çek - her etkinlik kendi targetCount'una kadar kayıt gösterecek
     const q = query(
       collection(db, 'scanned_entries'),
-      orderBy('id', 'desc'),
-      limit(500) // İlk yüklemede sadece son 500 kayıt
+      orderBy('id', 'desc')
+      // limit kaldırıldı - her etkinlik hedef sayısı kadar kayıt gösterebilsin
     );
 
     // Debounce timer for localStorage writes
