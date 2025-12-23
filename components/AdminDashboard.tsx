@@ -1192,18 +1192,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       Pasif Etkinlikler
                       {totalPassiveCount > 0 && (
                         <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
-                          (Toplam {totalPassiveCount} denetim - Son {passiveEvents.length} etkinlik gösteriliyor)
+                          (Son {passiveEvents.length} etkinlik - 24 saatte bir güncellenir)
                         </span>
                       )}
                     </h3>
                   </div>
-                  {passiveEvents.length === 0 && (
+                  {passiveEvents.length === 0 ? (
                     <button
                       onClick={onLoadPassiveEvents}
                       className="flex items-center gap-2 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition text-sm"
                     >
                       <RefreshCw size={16} />
                       Pasif Etkinlikleri Yükle
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => onLoadPassiveEvents()}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition text-sm"
+                      title="Manuel olarak yenile (cache'i yoksay)"
+                    >
+                      <RefreshCw size={14} />
+                      Yenile
                     </button>
                   )}
                 </div>
@@ -1256,8 +1265,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     <div
                                       key={event.id}
                                       className={`rounded-lg border p-3 shadow-sm ${isInTop50
-                                          ? 'bg-green-50 dark:bg-green-900/10 border-green-300 dark:border-green-700 border-2'
-                                          : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
+                                        ? 'bg-green-50 dark:bg-green-900/10 border-green-300 dark:border-green-700 border-2'
+                                        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
                                         }`}
                                     >
                                       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-2">
