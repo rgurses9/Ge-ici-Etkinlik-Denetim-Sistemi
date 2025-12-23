@@ -16,7 +16,8 @@ import {
   orderBy,
   writeBatch,
   where,
-  getDocs
+  getDocs,
+  limit
 } from 'firebase/firestore';
 
 const App: React.FC = () => {
@@ -70,8 +71,8 @@ const App: React.FC = () => {
   });
 
   // Pasif etkinlikleri ayrı state'te tut (sadece gerektiğinde yüklenecek)
+  // Cache stratejisi: 24 saatte bir güncelle, son 50 etkinliği göster
   const [passiveEvents, setPassiveEvents] = useState<Event[]>(() => {
-    // Önce localStorage'dan cache'lenmiş passive events'i yükle
     if (typeof window !== 'undefined') {
       const cachedPassive = localStorage.getItem('geds_passive_cache');
       if (cachedPassive) {
@@ -285,104 +286,69 @@ const App: React.FC = () => {
     };
   }, [session.isAuthenticated]); // session.isAuthenticated değiştiğinde çalış
 
-  // 4. Cache'den yüklenen pasif etkinlikler için scanned entries'i yükle
-  useEffect(() => {
-    // Login olmamışsa veya pasif etkinlik yoksa çalışma
-    if (!session.isAuthenticated || passiveEvents.length === 0 || passiveEventsLoaded) {
-      return;
-    }
-
-    console.log('🔄 Loading scanned entries for cached passive events...');
-
-    const loadCachedPassiveScans = async () => {
-      try {
-        const eventIds = passiveEvents.map(e => e.id);
-
-        // Hangi etkinliklerin scanned entries'i eksik kontrol et
-        const missingEventIds = eventIds.filter(eventId => {
-          const existingEntries = scannedEntries[eventId];
-          return !existingEntries || existingEntries.length === 0;
-        });
-
-        if (missingEventIds.length === 0) {
-          console.log('✅ All cached passive events already have scanned entries');
-          return;
-        }
-
-        console.log(`📊 Loading scanned entries for ${missingEventIds.length} cached passive events...`);
-
-        // Sadece eksik olanlar için scanned_entries'i çek
-        const scannedEntriesPromises = missingEventIds.map(async (eventId) => {
-          const scansQuery = query(
-            collection(db, 'scanned_entries'),
-            where('eventId', '==', eventId)
-          );
-          const scansSnapshot = await getDocs(scansQuery);
-          return scansSnapshot.docs.map(doc => doc.data() as ScanEntry);
-        });
-
-        const allScannedArrays = await Promise.all(scannedEntriesPromises);
-        const allScanned = allScannedArrays.flat();
-
-        // Mevcut scannedEntries ile birleştir
-        setScannedEntries(prev => {
-          const updated = { ...prev };
-          allScanned.forEach(entry => {
-            if (!updated[entry.eventId]) {
-              updated[entry.eventId] = [];
-            }
-            // Duplicate kontrolü
-            if (!updated[entry.eventId].find(e => e.id === entry.id)) {
-              updated[entry.eventId].push(entry);
-            }
-          });
-          // Cache'i güncelle
-          localStorage.setItem('geds_scanned_cache', JSON.stringify(updated));
-          return updated;
-        });
-
-        console.log(`✅ Loaded scanned entries for ${missingEventIds.length} cached passive events (${allScanned.length} total entries)`);
-      } catch (error) {
-        console.error('❌ Error loading cached passive scans:', error);
-      }
-    };
-
-    loadCachedPassiveScans();
-  }, [session.isAuthenticated, passiveEvents.length]); // passiveEvents değiştiğinde çalış
-
   // --- Handlers (Now using Firestore) ---
 
   // Pasif etkinlikleri yükle (sadece gerektiğinde çağrılır)
-  const loadPassiveEvents = async () => {
-    if (passiveEventsLoaded) {
-      console.log('⏸️ Passive events already loaded, skipping...');
-      return;
+  // forceRefresh: true ise cache'i yoksay ve Firebase'den çek
+  const loadPassiveEvents = async (forceRefresh = false) => {
+    const CACHE_KEY = 'geds_passive_cache';
+    const CACHE_TIMESTAMP_KEY = 'geds_passive_cache_timestamp';
+    const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 saat (milisaniye)
+    const PASSIVE_EVENTS_LIMIT = 50; // Son 50 pasif etkinlik
+
+    // Cache kontrolü - eğer forceRefresh değilse ve cache geçerliyse, cache'den yükle
+    if (!forceRefresh) {
+      const cachedTimestamp = localStorage.getItem(CACHE_TIMESTAMP_KEY);
+      const cachedData = localStorage.getItem(CACHE_KEY);
+
+      if (cachedTimestamp && cachedData) {
+        const cacheAge = Date.now() - parseInt(cachedTimestamp);
+
+        if (cacheAge < CACHE_DURATION) {
+          // Cache hala geçerli, Firebase'den çekme
+          console.log(`✅ Using cached passive events (age: ${Math.floor(cacheAge / 1000 / 60)} minutes)`);
+          try {
+            const cached = JSON.parse(cachedData);
+            setPassiveEvents(cached);
+            setTotalPassiveCount(cached.length);
+            setPassiveEventsLoaded(true);
+            return;
+          } catch (e) {
+            console.error('Error parsing cached data:', e);
+            // Cache bozuksa devam et ve Firebase'den çek
+          }
+        } else {
+          console.log(`🕐 Cache expired (age: ${Math.floor(cacheAge / 1000 / 60 / 60)} hours), fetching fresh data...`);
+        }
+      }
+    } else {
+      console.log('🔄 Force refresh requested, fetching fresh data from Firebase...');
     }
 
-    console.log('🔄 Loading ALL passive events...');
+    // Cache geçersiz veya forceRefresh=true, Firebase'den çek
+    console.log(`🔄 Loading last ${PASSIVE_EVENTS_LIMIT} passive events from Firebase...`);
+
     try {
-      // 1. TÜM pasif etkinlikleri al (tarih sınırlaması YOK)
+      // Sadece son 50 pasif etkinliği al (orderBy + limit kullan)
       const q = query(
         collection(db, 'events'),
-        where('status', '==', 'PASSIVE')
-        // orderBy kaldırıldı - client-side sıralama yapılacak
+        where('status', '==', 'PASSIVE'),
+        orderBy('endDate', 'desc'),
+        limit(PASSIVE_EVENTS_LIMIT)
       );
 
       const snapshot = await getDocs(q);
-      // Client-side sorting by endDate (descending)
-      const fetchedPassive: Event[] = snapshot.docs
-        .map(doc => doc.data() as Event)
-        .sort((a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime());
+      const fetchedPassive: Event[] = snapshot.docs.map(doc => doc.data() as Event);
       const totalCount = fetchedPassive.length;
 
       setTotalPassiveCount(totalCount);
       setPassiveEvents(fetchedPassive);
       setPassiveEventsLoaded(true);
 
-      console.log(`📊 Total passive events loaded: ${totalCount}`);
+      console.log(`📊 Loaded ${totalCount} passive events from Firebase`);
 
       // 2. Bu pasif etkinliklerin scanned_entries kayıtlarını da yükle
-      console.log('🔄 Loading scanned entries for all passive events...');
+      console.log('🔄 Loading scanned entries for passive events...');
       const eventIds = fetchedPassive.map(e => e.id);
 
       if (eventIds.length > 0) {
@@ -394,7 +360,7 @@ const App: React.FC = () => {
 
         console.log(`📊 Events with missing scanned entries: ${missingEventIds.length} of ${eventIds.length}`);
 
-        // BATCH OPTIMIZATION: 10 etkinlik gruplarında yükle (100+ sorgu yerine 10-20 sorgu)
+        // BATCH OPTIMIZATION: 10 etkinlik gruplarında yükle
         const BATCH_SIZE = 10;
         const allScanned: ScanEntry[] = [];
 
@@ -437,9 +403,10 @@ const App: React.FC = () => {
         console.log(`✅ Loaded scanned entries for ${eventIds.length} passive events (${allScanned.length} total entries)`);
       }
 
-      // Cache'e kaydet
-      localStorage.setItem('geds_passive_cache', JSON.stringify(fetchedPassive));
-      console.log(`✅ All passive events loaded: ${fetchedPassive.length} total`);
+      // Cache'e kaydet (yeni verilerle) + timestamp
+      localStorage.setItem(CACHE_KEY, JSON.stringify(fetchedPassive));
+      localStorage.setItem(CACHE_TIMESTAMP_KEY, Date.now().toString());
+      console.log(`✅ Cached ${fetchedPassive.length} passive events (valid for 24 hours)`);
     } catch (error: any) {
       console.error('❌ Error loading passive events:', error);
       if (error.code === 'resource-exhausted' || error.message?.includes('quota')) {
