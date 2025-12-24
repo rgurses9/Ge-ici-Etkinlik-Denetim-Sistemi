@@ -1199,7 +1199,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                   {passiveEvents.length === 0 ? (
                     <button
-                      onClick={onLoadPassiveEvents}
+                      onClick={() => onLoadPassiveEvents()}
                       className="flex items-center gap-2 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition text-sm"
                     >
                       <RefreshCw size={16} />
