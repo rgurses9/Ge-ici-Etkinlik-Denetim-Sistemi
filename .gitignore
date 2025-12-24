@@ -16,6 +16,13 @@ dist-ssr
 .env
 .env.local
 .env.*.local
+.env.migration
+
+# Migration files (contains sensitive data)
+migration-progress.json
+migration-log.txt
+migration-stdout.log
+migration-stderr.log
 
 # Editor directories and files
 .vscode/*
