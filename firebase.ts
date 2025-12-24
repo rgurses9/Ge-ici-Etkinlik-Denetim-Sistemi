@@ -3,23 +3,17 @@ import { getFirestore } from "firebase/firestore";
 import { getAnalytics } from "firebase/analytics";
 import { getDatabase } from "firebase/database";
 
-// Firebase configuration - Sadece environment variables kullanılıyor
-// .env.local dosyasından yüklenir
+// Firebase configuration - Environment variables ile (fallback değerlerle)
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyAxX-0LB1tZghmjdRyw5mgS9dHeJu2t7-8",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "gecicidenetlemeyenisi.firebaseapp.com",
+  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || "https://gecicidenetlemeyenisi-default-rtdb.firebaseio.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "gecicidenetlemeyenisi",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "gecicidenetlemeyenisi.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "363518576134",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:363518576134:web:906583e051db5d7a27a587",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-CYXC3PTEZE"
 };
-
-// Validate configuration
-if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
-  throw new Error('Firebase configuration is missing! Please check your .env.local file.');
-}
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
