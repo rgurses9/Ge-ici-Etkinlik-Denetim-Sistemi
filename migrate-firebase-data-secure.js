@@ -1,32 +1,44 @@
-// Firebase Veri Taşıma Scripti - Akıllı Devam Etme Özelliği
-// Eski Firebase (denetleme-devam) -> Yeni Firebase (gecicidenetlemeyenisi)
+// Firebase Migration Script - Environment Variables Kullanımı
+// .env dosyasından Firebase config'leri yükler
 
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, doc, setDoc, writeBatch, query, where } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, doc, setDoc, writeBatch } from 'firebase/firestore';
 import fs from 'fs';
+import dotenv from 'dotenv';
+
+// .env dosyasını yükle
+dotenv.config({ path: '.env.migration' });
 
 // KAYNAK FIREBASE (Eski - denetleme-devam)
 const sourceConfig = {
-    apiKey: "AIzaSyCdDR19Aq8xSP3TNH3FVeSgVOwhn-96wBg",
-    authDomain: "denetleme-devam.firebaseapp.com",
-    projectId: "denetleme-devam",
-    storageBucket: "denetleme-devam.firebasestorage.app",
-    messagingSenderId: "833897901550",
-    appId: "1:833897901550:web:0cf25230715f92c43672ff",
-    measurementId: "G-R5XC5VMGBT"
+    apiKey: process.env.SOURCE_FIREBASE_API_KEY,
+    authDomain: process.env.SOURCE_FIREBASE_AUTH_DOMAIN,
+    projectId: process.env.SOURCE_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.SOURCE_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.SOURCE_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.SOURCE_FIREBASE_APP_ID,
+    measurementId: process.env.SOURCE_FIREBASE_MEASUREMENT_ID
 };
 
 // HEDEF FIREBASE (Yeni - gecicidenetlemeyenisi)
 const targetConfig = {
-    apiKey: "AIzaSyAxX-0LB1tZghmjdRyw5mgS9dHeJu2t7-8",
-    authDomain: "gecicidenetlemeyenisi.firebaseapp.com",
-    databaseURL: "https://gecicidenetlemeyenisi-default-rtdb.firebaseio.com",
-    projectId: "gecicidenetlemeyenisi",
-    storageBucket: "gecicidenetlemeyenisi.firebasestorage.app",
-    messagingSenderId: "363518576134",
-    appId: "1:363518576134:web:906583e051db5d7a27a587",
-    measurementId: "G-CYXC3PTEZE"
+    apiKey: process.env.TARGET_FIREBASE_API_KEY,
+    authDomain: process.env.TARGET_FIREBASE_AUTH_DOMAIN,
+    databaseURL: process.env.TARGET_FIREBASE_DATABASE_URL,
+    projectId: process.env.TARGET_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.TARGET_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.TARGET_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.TARGET_FIREBASE_APP_ID,
+    measurementId: process.env.TARGET_FIREBASE_MEASUREMENT_ID
 };
+
+// Validate configs
+if (!sourceConfig.apiKey || !targetConfig.apiKey) {
+    console.error('❌ Firebase configuration is missing!');
+    console.error('Please create .env.migration file with required variables.');
+    console.error('See .env.migration.example for template.');
+    process.exit(1);
+}
 
 // İlerleme dosyası
 const PROGRESS_FILE = './migration-progress.json';
@@ -191,7 +203,7 @@ async function migrateAllData() {
 
     // İlerlemeyi yükle
     const progress = loadProgress();
-    console.log('📋 Önceki ilerleme yüklendi:\n', JSON.stringify(progress, null, 2), '\n');
+    console.log('📋 Önceki ilerleme yüklendi\n');
 
     const results = {
         users: null,
@@ -248,10 +260,6 @@ async function migrateAllData() {
         console.log('⚠️  Firebase Quota Limiti Aşıldı!');
         console.log('💡 Çözüm: Bu scripti yarın tekrar çalıştırın:');
         console.log('   node migrate-firebase-data.js');
-        console.log('');
-        console.log('📅 Otomatik çalıştırma için cron job ekleyin:');
-        console.log('   crontab -e');
-        console.log('   0 9 * * * cd /path/to/project && node migrate-firebase-data.js');
     } else if (totalFailed === 0) {
         console.log('🎉 Tüm veriler başarıyla taşındı!');
         // İlerleme dosyasını temizle
