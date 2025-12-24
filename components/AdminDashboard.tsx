@@ -1192,7 +1192,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       Pasif Etkinlikler
                       {totalPassiveCount > 0 && (
                         <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
-                          (Son {passiveEvents.length} etkinlik - 24 saatte bir güncellenir)
+                          ({totalPassiveCount} toplam - Son {passiveEvents.length} gösteriliyor)
                         </span>
                       )}
                     </h3>
