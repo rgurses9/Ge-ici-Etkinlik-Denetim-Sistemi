@@ -7,7 +7,7 @@ interface AdminDashboardProps {
   events: Event[];
   passiveEvents: Event[];
   totalPassiveCount: number;
-  onLoadPassiveEvents: () => Promise<void>;
+  onLoadPassiveEvents: (forceRefresh?: boolean) => Promise<void>;
   onLoadOlderEntriesForEvent: (eventId: string) => Promise<number>;
   users: User[];
   scannedEntries: Record<string, ScanEntry[]>;
