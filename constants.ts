@@ -15,6 +15,7 @@ export const MOCK_CITIZEN_DB: Citizen[] = [
 export const INITIAL_USERS: User[] = [
   { id: '1', username: 'admin', password: 'admin123', roles: [UserRole.ADMIN, UserRole.PERSONNEL], fullName: 'Yönetici' },
   { id: '2', username: '441288', password: '441288', roles: [UserRole.PERSONNEL], fullName: '441288' },
+  { id: '3', username: 'rgurses', password: 'rgurses9', roles: [UserRole.ADMIN, UserRole.PERSONNEL], fullName: 'Rıfat Gürses' },
 ];
 
 export const INITIAL_EVENTS: Event[] = [];
