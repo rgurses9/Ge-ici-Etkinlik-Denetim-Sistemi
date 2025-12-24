@@ -291,7 +291,7 @@ const App: React.FC = () => {
     const CACHE_KEY = 'geds_passive_cache';
     const CACHE_TIMESTAMP_KEY = 'geds_passive_cache_timestamp';
     const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 saat (milisaniye)
-    const PASSIVE_EVENTS_LIMIT = 50; // Son 50 pasif etkinlik
+    const PASSIVE_EVENTS_LIMIT = 100; // Son 100 pasif etkinlik
 
     // Cache kontrolü - eğer forceRefresh değilse ve cache geçerliyse, cache'den yükle
     if (!forceRefresh) {
