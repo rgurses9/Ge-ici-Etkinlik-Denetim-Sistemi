@@ -290,7 +290,7 @@ const App: React.FC = () => {
   const loadPassiveEvents = async (forceRefresh = false) => {
     const CACHE_KEY = 'geds_passive_cache';
     const CACHE_TIMESTAMP_KEY = 'geds_passive_cache_timestamp';
-    const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 saat (milisaniye)
+    const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 gün (milisaniye)
     const PASSIVE_EVENTS_LIMIT = 35; // Son 35 pasif etkinlik
 
     // Cache kontrolü - eğer forceRefresh değilse ve cache geçerliyse, cache'den yükle
@@ -307,19 +307,11 @@ const App: React.FC = () => {
           try {
             const cached = JSON.parse(cachedData);
 
-            // ANCAK toplam sayıyı Firebase'den al (hafif query)
-            const countQuery = query(
-              collection(db, 'events'),
-              where('status', '==', 'PASSIVE')
-            );
-            const countSnapshot = await getDocs(countQuery);
-            const realTotalCount = countSnapshot.size;
-
             // Cache'den TÜM etkinlikleri göster
             setPassiveEvents(cached);
-            setTotalPassiveCount(realTotalCount); // Gerçek toplam sayı
+            setTotalPassiveCount(cached.length); // Cache'deki toplam sayı
             setPassiveEventsLoaded(true);
-            console.log(`📊 Loaded ${cached.length} of ${realTotalCount} cached passive events (all shown)`);
+            console.log(`📊 Loaded ${cached.length} cached passive events (from cache, no Firebase read)`);
             return;
           } catch (e) {
             console.error('Error parsing cached data:', e);
@@ -401,7 +393,7 @@ const App: React.FC = () => {
           allScanned.push(...batchScans);
 
           // Rate limiting: Her batch arasında kısa bekleme
-          if (i + BATCH_SIZE < eventIds.length) {
+          if (i + BATCH_SIZE < eventIdsToLoad.length) {
             await new Promise(resolve => setTimeout(resolve, 100));
           }
         }
