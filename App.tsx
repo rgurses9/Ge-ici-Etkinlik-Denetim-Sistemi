@@ -315,12 +315,11 @@ const App: React.FC = () => {
             const countSnapshot = await getDocs(countQuery);
             const realTotalCount = countSnapshot.size;
 
-            // Cache'den de sadece LIMIT kadar al
-            const limitedCached = cached.slice(0, PASSIVE_EVENTS_LIMIT);
-            setPassiveEvents(limitedCached);
+            // Cache'den TÜM etkinlikleri göster
+            setPassiveEvents(cached);
             setTotalPassiveCount(realTotalCount); // Gerçek toplam sayı
             setPassiveEventsLoaded(true);
-            console.log(`📊 Loaded ${limitedCached.length} of ${realTotalCount} cached passive events`);
+            console.log(`📊 Loaded ${cached.length} of ${realTotalCount} cached passive events (all shown)`);
             return;
           } catch (e) {
             console.error('Error parsing cached data:', e);
@@ -358,36 +357,39 @@ const App: React.FC = () => {
         return bTime - aTime; // Descending (en yeni önce)
       });
 
-      // İlk PASSIVE_EVENTS_LIMIT kadarını al
-      const fetchedPassive = allPassive.slice(0, PASSIVE_EVENTS_LIMIT);
+      // TÜM pasif etkinlikleri göster
+      const fetchedPassive = allPassive;
+
+      // Sadece ilk 35'inin scanned_entries'lerini yükleyeceğiz
+      const SCANNED_ENTRIES_LIMIT = 35;
 
       // Toplam sayıyı gerçek değerle güncelle
       setTotalPassiveCount(actualTotalCount);
       setPassiveEvents(fetchedPassive);
       setPassiveEventsLoaded(true);
 
-      console.log(`📊 Loaded ${fetchedPassive.length} of ${actualTotalCount} passive events from Firebase`);
+      console.log(`📊 Loaded ${fetchedPassive.length} passive events (will load scanned entries for first ${SCANNED_ENTRIES_LIMIT})`);
 
       // 2. Bu pasif etkinliklerin scanned_entries kayıtlarını da yükle
       console.log('🔄 Loading scanned entries for passive events...');
-      const eventIds = fetchedPassive.map(e => e.id);
+      const eventIdsToLoad = fetchedPassive.slice(0, SCANNED_ENTRIES_LIMIT).map(e => e.id);
 
-      if (eventIds.length > 0) {
+      if (eventIdsToLoad.length > 0) {
         // Önce hangi etkinliklerin scanned entries'i eksik kontrol et
-        const missingEventIds = eventIds.filter(eventId => {
+        const missingEventIds = eventIdsToLoad.filter(eventId => {
           const existingEntries = scannedEntries[eventId];
           return !existingEntries || existingEntries.length === 0;
         });
 
-        console.log(`📊 Events with missing scanned entries: ${missingEventIds.length} of ${eventIds.length}`);
+        console.log(`📊 Events with missing scanned entries: ${missingEventIds.length} of ${eventIdsToLoad.length} (loading only first ${SCANNED_ENTRIES_LIMIT})`);
 
         // BATCH OPTIMIZATION: 10 etkinlik gruplarında yükle
         const BATCH_SIZE = 10;
         const allScanned: ScanEntry[] = [];
 
-        for (let i = 0; i < eventIds.length; i += BATCH_SIZE) {
-          const batchIds = eventIds.slice(i, i + BATCH_SIZE);
-          console.log(`🔄 Loading batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(eventIds.length / BATCH_SIZE)} (${batchIds.length} events)...`);
+        for (let i = 0; i < eventIdsToLoad.length; i += BATCH_SIZE) {
+          const batchIds = eventIdsToLoad.slice(i, i + BATCH_SIZE);
+          console.log(`🔄 Loading batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(eventIdsToLoad.length / BATCH_SIZE)} (${batchIds.length} events)...`);
 
           // Batch içindeki tüm etkinlikler için tek sorguda çek
           const scansQuery = query(
@@ -421,7 +423,7 @@ const App: React.FC = () => {
           return updated;
         });
 
-        console.log(`✅ Loaded scanned entries for ${eventIds.length} passive events (${allScanned.length} total entries)`);
+        console.log(`✅ Loaded scanned entries for ${eventIdsToLoad.length} passive events (${allScanned.length} total entries)`);
       }
 
       // Cache'e kaydet (yeni verilerle) + timestamp
