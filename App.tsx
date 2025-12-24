@@ -306,12 +306,21 @@ const App: React.FC = () => {
           console.log(`✅ Using cached passive events (age: ${Math.floor(cacheAge / 1000 / 60)} minutes)`);
           try {
             const cached = JSON.parse(cachedData);
+
+            // ANCAK toplam sayıyı Firebase'den al (hafif query)
+            const countQuery = query(
+              collection(db, 'events'),
+              where('status', '==', 'PASSIVE')
+            );
+            const countSnapshot = await getDocs(countQuery);
+            const realTotalCount = countSnapshot.size;
+
             // Cache'den de sadece LIMIT kadar al
             const limitedCached = cached.slice(0, PASSIVE_EVENTS_LIMIT);
             setPassiveEvents(limitedCached);
-            setTotalPassiveCount(cached.length); // Toplam sayı cache'deki tüm etkinlikler
+            setTotalPassiveCount(realTotalCount); // Gerçek toplam sayı
             setPassiveEventsLoaded(true);
-            console.log(`📊 Loaded ${limitedCached.length} of ${cached.length} cached passive events`);
+            console.log(`📊 Loaded ${limitedCached.length} of ${realTotalCount} cached passive events`);
             return;
           } catch (e) {
             console.error('Error parsing cached data:', e);
