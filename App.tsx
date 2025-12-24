@@ -170,12 +170,9 @@ const App: React.FC = () => {
       return;
     }
 
-    console.log('🔄 Starting Events subscription (ACTIVE/IN_PROGRESS only)...');
-    // SADECE ACTIVE ve IN_PROGRESS etkinlikleri çek (reads azaltmak için)
-    const q = query(
-      collection(db, 'events'),
-      where('status', 'in', ['ACTIVE', 'IN_PROGRESS'])
-    );
+    console.log('🔄 Starting Events subscription (ALL events)...');
+    // TÜM etkinlikleri çek (ACTIVE, IN_PROGRESS, PASSIVE)
+    const q = collection(db, 'events');
     const unsubEvents = onSnapshot(
       q,
       (snapshot) => {
