@@ -1192,7 +1192,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       Pasif Etkinlikler
                       {totalPassiveCount > 0 && (
                         <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
-                          (Toplam {totalPassiveCount} etkinlik, son {Math.min(35, passiveEvents.length)} gösteriliyor)
+                          (Toplam {totalPassiveCount} etkinlik, son 35'in verileri gösteriliyor)
                         </span>
                       )}
                     </h3>
@@ -1207,7 +1207,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </button>
                   ) : (
                     <button
-                      onClick={() => onLoadPassiveEvents()}
+                      onClick={() => onLoadPassiveEvents(true)}
                       className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition text-sm"
                       title="Manuel olarak yenile (cache'i yoksay)"
                     >
