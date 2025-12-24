@@ -323,26 +323,49 @@ const App: React.FC = () => {
     }
 
     // Cache geçersiz veya forceRefresh=true, Firebase'den çek
-    console.log(`🔄 Loading last ${PASSIVE_EVENTS_LIMIT} passive events from Firebase...`);
+    console.log(`🔄 Loading passive events from Firebase...`);
 
     try {
-      // Sadece son 50 pasif etkinliği al (orderBy + limit kullan)
-      const q = query(
+      // 1. Önce toplam PASSIVE etkinlik sayısını al
+      const countQuery = query(
         collection(db, 'events'),
-        where('status', '==', 'PASSIVE'),
-        orderBy('endDate', 'desc'),
-        limit(PASSIVE_EVENTS_LIMIT)
+        where('status', '==', 'PASSIVE')
       );
+      const countSnapshot = await getDocs(countQuery);
+      const actualTotalCount = countSnapshot.size;
+
+      console.log(`📊 Total PASSIVE events in database: ${actualTotalCount}`);
+
+      // 2. Son PASSIVE_EVENTS_LIMIT kadar etkinliği al
+      // closedAt'e göre sıralı - son kapatılanlar önce (index gerekli)
+      let q;
+      try {
+        q = query(
+          collection(db, 'events'),
+          where('status', '==', 'PASSIVE'),
+          orderBy('closedAt', 'desc'),
+          limit(PASSIVE_EVENTS_LIMIT)
+        );
+      } catch (indexError) {
+        // Index yoksa endDate kullan (fallback)
+        console.warn('closedAt index not found, using endDate fallback');
+        q = query(
+          collection(db, 'events'),
+          where('status', '==', 'PASSIVE'),
+          orderBy('endDate', 'desc'),
+          limit(PASSIVE_EVENTS_LIMIT)
+        );
+      }
 
       const snapshot = await getDocs(q);
       const fetchedPassive: Event[] = snapshot.docs.map(doc => doc.data() as Event);
-      const totalCount = fetchedPassive.length;
 
-      setTotalPassiveCount(totalCount);
+      // Toplam sayıyı gerçek değerle güncelle
+      setTotalPassiveCount(actualTotalCount);
       setPassiveEvents(fetchedPassive);
       setPassiveEventsLoaded(true);
 
-      console.log(`📊 Loaded ${totalCount} passive events from Firebase`);
+      console.log(`📊 Loaded ${fetchedPassive.length} of ${actualTotalCount} passive events from Firebase`);
 
       // 2. Bu pasif etkinliklerin scanned_entries kayıtlarını da yükle
       console.log('🔄 Loading scanned entries for passive events...');
@@ -531,7 +554,8 @@ const App: React.FC = () => {
         const eventRef = doc(db, 'events', activeEventId);
         await updateDoc(eventRef, {
           status: 'PASSIVE',
-          completionDuration: formattedDuration
+          completionDuration: formattedDuration,
+          closedAt: Date.now() // Kapatılma zamanı
         });
       } catch (e) {
         console.error("Error auto-completing audit: ", e);
@@ -547,7 +571,8 @@ const App: React.FC = () => {
         const eventRef = doc(db, 'events', activeEventId);
         await updateDoc(eventRef, {
           status: 'PASSIVE',
-          completionDuration: duration
+          completionDuration: duration,
+          closedAt: Date.now() // Kapatılma zamanı
         });
         console.log('✅ Event marked as PASSIVE:', activeEventId);
 

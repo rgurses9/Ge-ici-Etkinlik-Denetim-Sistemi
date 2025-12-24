@@ -27,6 +27,7 @@ export interface Event {
   endDate: string;
   status: 'ACTIVE' | 'PASSIVE';
   completionDuration?: string; // "HH:MM:SS" format
+  closedAt?: number; // Kapatılma zamanı (timestamp)
   companies?: Company[]; // Farklı şirketler varsa
 }
 
