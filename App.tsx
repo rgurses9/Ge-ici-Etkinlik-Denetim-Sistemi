@@ -291,7 +291,7 @@ const App: React.FC = () => {
     const CACHE_KEY = 'geds_passive_cache';
     const CACHE_TIMESTAMP_KEY = 'geds_passive_cache_timestamp';
     const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 saat (milisaniye)
-    const PASSIVE_EVENTS_LIMIT = 100; // Son 100 pasif etkinlik
+    const PASSIVE_EVENTS_LIMIT = 35; // Son 35 pasif etkinlik
 
     // Cache kontrolü - eğer forceRefresh değilse ve cache geçerliyse, cache'den yükle
     if (!forceRefresh) {
@@ -306,9 +306,12 @@ const App: React.FC = () => {
           console.log(`✅ Using cached passive events (age: ${Math.floor(cacheAge / 1000 / 60)} minutes)`);
           try {
             const cached = JSON.parse(cachedData);
-            setPassiveEvents(cached);
-            setTotalPassiveCount(cached.length);
+            // Cache'den de sadece LIMIT kadar al
+            const limitedCached = cached.slice(0, PASSIVE_EVENTS_LIMIT);
+            setPassiveEvents(limitedCached);
+            setTotalPassiveCount(cached.length); // Toplam sayı cache'deki tüm etkinlikler
             setPassiveEventsLoaded(true);
+            console.log(`📊 Loaded ${limitedCached.length} of ${cached.length} cached passive events`);
             return;
           } catch (e) {
             console.error('Error parsing cached data:', e);
