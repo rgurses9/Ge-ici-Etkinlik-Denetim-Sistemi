@@ -326,39 +326,28 @@ const App: React.FC = () => {
     console.log(`🔄 Loading passive events from Firebase...`);
 
     try {
-      // 1. Önce toplam PASSIVE etkinlik sayısını al
-      const countQuery = query(
+      // TÜM PASSIVE etkinlikleri al (client-side sıralama yapacağız)
+      const q = query(
         collection(db, 'events'),
         where('status', '==', 'PASSIVE')
       );
-      const countSnapshot = await getDocs(countQuery);
-      const actualTotalCount = countSnapshot.size;
-
-      console.log(`📊 Total PASSIVE events in database: ${actualTotalCount}`);
-
-      // 2. Son PASSIVE_EVENTS_LIMIT kadar etkinliği al
-      // closedAt'e göre sıralı - son kapatılanlar önce (index gerekli)
-      let q;
-      try {
-        q = query(
-          collection(db, 'events'),
-          where('status', '==', 'PASSIVE'),
-          orderBy('closedAt', 'desc'),
-          limit(PASSIVE_EVENTS_LIMIT)
-        );
-      } catch (indexError) {
-        // Index yoksa endDate kullan (fallback)
-        console.warn('closedAt index not found, using endDate fallback');
-        q = query(
-          collection(db, 'events'),
-          where('status', '==', 'PASSIVE'),
-          orderBy('endDate', 'desc'),
-          limit(PASSIVE_EVENTS_LIMIT)
-        );
-      }
 
       const snapshot = await getDocs(q);
-      const fetchedPassive: Event[] = snapshot.docs.map(doc => doc.data() as Event);
+      let allPassive: Event[] = snapshot.docs.map(doc => doc.data() as Event);
+
+      const actualTotalCount = allPassive.length;
+      console.log(`📊 Total PASSIVE events in database: ${actualTotalCount}`);
+
+      // Client-side sıralama: closedAt'e göre (en yeni önce)
+      // closedAt yoksa endDate kullan (eski etkinlikler için)
+      allPassive.sort((a, b) => {
+        const aTime = a.closedAt || new Date(a.endDate).getTime() || 0;
+        const bTime = b.closedAt || new Date(b.endDate).getTime() || 0;
+        return bTime - aTime; // Descending (en yeni önce)
+      });
+
+      // İlk PASSIVE_EVENTS_LIMIT kadarını al
+      const fetchedPassive = allPassive.slice(0, PASSIVE_EVENTS_LIMIT);
 
       // Toplam sayıyı gerçek değerle güncelle
       setTotalPassiveCount(actualTotalCount);
