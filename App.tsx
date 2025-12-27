@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Login from './components/Login';
 import AdminDashboard from './components/AdminDashboard';
 import AuditScreen from './components/AuditScreen';
+import HelpGuide from './components/HelpGuide';
 import { User, Event, ScanEntry, SessionState, Citizen } from './types';
 import { INITIAL_USERS, INITIAL_EVENTS } from './constants';
 import { db } from './firebase';
@@ -116,105 +117,143 @@ const App: React.FC = () => {
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
   const [activeCompanyId, setActiveCompanyId] = useState<string | null>(null);
 
-  // --- Firestore Subscriptions ---
+  // Help Guide State
+  const [isHelpGuideOpen, setIsHelpGuideOpen] = useState(false);
 
-  // 1. Users Subscription & Initial Seeding
-  // HER ZAMAN çalıştır (login için gerekli!)
+  // --- Firestore Subscriptions (OPTIMIZED WITH CACHE) ---
+
+  // 1. Users - 12 HOUR CACHE (Login için gerekli ama optimize edildi)
   useEffect(() => {
-    console.log('🔄 Starting Users subscription (required for login)...');
-    const q = query(collection(db, 'users'), orderBy('username', 'asc'));
-    const unsubUsers = onSnapshot(
-      q,
-      (snapshot) => {
+    const USERS_CACHE_KEY = 'geds_users_cache';
+    const USERS_CACHE_TIMESTAMP_KEY = 'geds_users_cache_timestamp';
+    const CACHE_DURATION = 12 * 60 * 60 * 1000; // 12 saat
+
+    const loadUsers = async () => {
+      // Check cache first
+      const cachedTimestamp = localStorage.getItem(USERS_CACHE_TIMESTAMP_KEY);
+      const cachedData = localStorage.getItem(USERS_CACHE_KEY);
+
+      if (cachedTimestamp && cachedData) {
+        const cacheAge = Date.now() - parseInt(cachedTimestamp);
+        if (cacheAge < CACHE_DURATION) {
+          console.log(`✅ Using cached users (age: ${Math.floor(cacheAge / 1000 / 60)} minutes)`);
+          try {
+            const cached = JSON.parse(cachedData);
+            setUsers(cached);
+            return;
+          } catch (e) {
+            console.error('Error parsing cached users:', e);
+          }
+        }
+      }
+
+      // Cache expired or doesn't exist, fetch from Firebase
+      console.log('🔄 Loading users from Firebase (cache expired)...');
+      try {
+        const q = query(collection(db, 'users'), orderBy('username', 'asc'));
+        const snapshot = await getDocs(q);
         const fetchedUsers: User[] = snapshot.docs.map(doc => doc.data() as User);
 
         // Seed Initial Users if DB is empty
         if (fetchedUsers.length === 0) {
           console.log("🌱 Seeding initial users to Firestore...");
-          INITIAL_USERS.forEach(async (user) => {
+          for (const user of INITIAL_USERS) {
             await setDoc(doc(db, 'users', user.id), user);
-          });
-          // Seed işlemi sırasında da kullanıcıları state'e ekle
+          }
           setUsers(INITIAL_USERS);
-          console.log("✅ Initial users seeded and loaded:", INITIAL_USERS.length);
+          localStorage.setItem(USERS_CACHE_KEY, JSON.stringify(INITIAL_USERS));
+          localStorage.setItem(USERS_CACHE_TIMESTAMP_KEY, Date.now().toString());
+          console.log("✅ Initial users seeded and cached");
         } else {
           setUsers(fetchedUsers);
-          console.log("✅ Users loaded from Firestore:", fetchedUsers.length);
+          localStorage.setItem(USERS_CACHE_KEY, JSON.stringify(fetchedUsers));
+          localStorage.setItem(USERS_CACHE_TIMESTAMP_KEY, Date.now().toString());
+          console.log(`✅ Users loaded and cached: ${fetchedUsers.length} (valid for 12 hours)`);
         }
-      },
-      (error) => {
+      } catch (error: any) {
         console.error("❌ Firebase Users Error:", error);
         if (error.code === 'resource-exhausted' || error.message?.includes('quota')) {
-          alert('⚠️ Firebase Ücretsiz Limit Aşıldı!\n\nKullanıcı verileri yüklenemedi.');
+          alert('⚠️ Firebase Limit Aşıldı!\n\nKullanıcı verileri yüklenemedi.');
         } else if (error.code === 'permission-denied') {
-          alert('⚠️ Firebase İzin Hatası!\n\nFirestore Rules kontrol edin.\n\nGeçici çözüm: Initial users yüklendi.');
-          // İzin hatası durumunda initial users'ı yükle
+          alert('⚠️ Firebase İzin Hatası!\n\nGeçici çözüm: Initial users yüklendi.');
           setUsers(INITIAL_USERS);
         }
-        // Diğer hatalarda boş array
-        if (error.code !== 'permission-denied') {
-          setUsers([]);
-        }
       }
-    );
+    };
 
-    return () => unsubUsers();
+    loadUsers();
   }, []); // Sadece mount'ta çalış
 
-  // 2. Events Subscription & Initial Seeding
-  // SADECE authenticated kullanıcılar için çalıştır (reads azaltmak için)
+  // 2. Events - 12 HOUR CACHE (Sadece authenticated kullanıcılar için)
   useEffect(() => {
     // Login olmamışsa Firebase'e bağlanma
     if (!session.isAuthenticated) {
-      console.log('⏸️ Not authenticated, skipping Events subscription');
+      console.log('⏸️ Not authenticated, skipping Events loading');
       return;
     }
 
-    console.log('🔄 Starting Events subscription (ALL events)...');
-    // TÜM etkinlikleri çek (ACTIVE, IN_PROGRESS, PASSIVE)
-    const q = collection(db, 'events');
-    const unsubEvents = onSnapshot(
-      q,
-      (snapshot) => {
+    const EVENTS_CACHE_KEY = 'geds_events_cache';
+    const EVENTS_CACHE_TIMESTAMP_KEY = 'geds_events_cache_timestamp';
+    const CACHE_DURATION = 12 * 60 * 60 * 1000; // 12 saat
+
+    const loadEvents = async () => {
+      // Check cache first
+      const cachedTimestamp = localStorage.getItem(EVENTS_CACHE_TIMESTAMP_KEY);
+      const cachedData = localStorage.getItem(EVENTS_CACHE_KEY);
+
+      if (cachedTimestamp && cachedData) {
+        const cacheAge = Date.now() - parseInt(cachedTimestamp);
+        if (cacheAge < CACHE_DURATION) {
+          console.log(`✅ Using cached events (age: ${Math.floor(cacheAge / 1000 / 60)} minutes)`);
+          try {
+            const cached = JSON.parse(cachedData);
+            setEvents(cached);
+            return;
+          } catch (e) {
+            console.error('Error parsing cached events:', e);
+          }
+        }
+      }
+
+      // Cache expired or doesn't exist, fetch from Firebase
+      console.log('🔄 Loading events from Firebase (cache expired)...');
+      try {
+        const q = collection(db, 'events');
+        const snapshot = await getDocs(q);
         const fetchedEvents: Event[] = snapshot.docs.map(doc => doc.data() as Event);
 
         // Seed Initial Events if DB is empty
         if (fetchedEvents.length === 0) {
           console.log("🌱 Seeding initial events to Firestore...");
-          INITIAL_EVENTS.forEach(async (event) => {
+          for (const event of INITIAL_EVENTS) {
             await setDoc(doc(db, 'events', event.id), event);
-          });
-          // Seed işlemi sırasında da events'i state'e ekle
+          }
           setEvents(INITIAL_EVENTS);
-          console.log("✅ Initial events seeded and loaded:", INITIAL_EVENTS.length);
+          localStorage.setItem(EVENTS_CACHE_KEY, JSON.stringify(INITIAL_EVENTS));
+          localStorage.setItem(EVENTS_CACHE_TIMESTAMP_KEY, Date.now().toString());
+          console.log("✅ Initial events seeded and cached");
         } else {
           setEvents(fetchedEvents);
-          console.log("✅ Events loaded from Firestore:", fetchedEvents.length);
+          localStorage.setItem(EVENTS_CACHE_KEY, JSON.stringify(fetchedEvents));
+          localStorage.setItem(EVENTS_CACHE_TIMESTAMP_KEY, Date.now().toString());
+          console.log(`✅ Events loaded and cached: ${fetchedEvents.length} (valid for 12 hours)`);
         }
-        // Events'ı localStorage'a cache'le
-        localStorage.setItem('geds_events_cache', JSON.stringify(fetchedEvents.length > 0 ? fetchedEvents : INITIAL_EVENTS));
-      },
-      (error) => {
+      } catch (error: any) {
         console.error("❌ Firebase Events Error:", error);
         if (error.code === 'resource-exhausted' || error.message?.includes('quota')) {
-          alert('⚠️ Firebase Ücretsiz Limit Aşıldı!\n\nEtkinlik verileri yüklenemedi.');
+          alert('⚠️ Firebase Limit Aşıldı!\n\nEtkinlik verileri yüklenemedi.');
         } else if (error.code === 'permission-denied') {
-          alert('⚠️ Firebase İzin Hatası!\n\nFirestore Rules kontrol edin.\n\nGeçici çözüm: Initial events yüklendi.');
+          alert('⚠️ Firebase İzin Hatası!\n\nGeçici çözüm: Initial events yüklendi.');
           setEvents(INITIAL_EVENTS);
         }
-        // Diğer hatalarda boş array
-        if (error.code !== 'permission-denied') {
-          setEvents([]);
-        }
-        // Hata durumunda cache'i temizleme (eski veriler görünsün)
       }
-    );
+    };
 
-    return () => unsubEvents();
+    loadEvents();
   }, [session.isAuthenticated]); // session.isAuthenticated değiştiğinde çalış
 
-  // 3. Scanned Entries Subscription - OPTIMIZED
-  // SADECE authenticated kullanıcılar için çalıştır (reads azaltmak için)
+  // 3. Scanned Entries - OPTIMIZED (Sadece ACTIVE/IN_PROGRESS etkinlikler için)
+  // PASSIVE etkinliklerin kayıtları loadPassiveEvents() ile lazy loading yapılacak
   useEffect(() => {
     // Login olmamışsa Firebase'e bağlanma
     if (!session.isAuthenticated) {
@@ -222,12 +261,23 @@ const App: React.FC = () => {
       return;
     }
 
-    console.log('🔄 Starting Scanned Entries subscription (ALL ENTRIES)...');
-    // Tüm kayıtları çek - her etkinlik kendi targetCount'una kadar kayıt gösterecek
+    // Sadece ACTIVE ve IN_PROGRESS etkinliklerin ID'lerini al
+    const activeEventIds = events
+      .filter(e => e.status !== 'PASSIVE')
+      .map(e => e.id);
+
+    if (activeEventIds.length === 0) {
+      console.log('⏸️ No active events, skipping Scanned Entries subscription');
+      return;
+    }
+
+    console.log(`🔄 Starting Scanned Entries subscription for ${activeEventIds.length} ACTIVE events...`);
+
+    // Sadece aktif etkinliklerin kayıtlarını dinle
     const q = query(
       collection(db, 'scanned_entries'),
+      where('eventId', 'in', activeEventIds.slice(0, 10)), // Firebase 'in' limiti: max 10
       orderBy('id', 'desc')
-      // limit kaldırıldı - her etkinlik hedef sayısı kadar kayıt gösterebilsin
     );
 
     // Debounce timer for localStorage writes
@@ -238,7 +288,7 @@ const App: React.FC = () => {
       (snapshot) => {
         // Check if data is from cache or server
         const source = snapshot.metadata.fromCache ? 'cache' : 'server';
-        console.log(`📊 Scanned entries loaded from ${source}: ${snapshot.docs.length} entries`);
+        console.log(`📊 Scanned entries loaded from ${source}: ${snapshot.docs.length} entries (ACTIVE events only)`);
 
         const fetchedEntries: ScanEntry[] = snapshot.docs.map(doc => doc.data() as ScanEntry);
 
@@ -251,14 +301,25 @@ const App: React.FC = () => {
           grouped[entry.eventId].push(entry);
         });
 
-        setScannedEntries(grouped);
+        // Mevcut cache'deki PASSIVE etkinlik kayıtlarını koru
+        setScannedEntries(prev => {
+          const updated = { ...prev };
+          // Yeni aktif etkinlik kayıtlarını ekle/güncelle
+          Object.keys(grouped).forEach(eventId => {
+            updated[eventId] = grouped[eventId];
+          });
+          return updated;
+        });
 
         // Debounced localStorage write (sadece server'dan gelen veriler için)
         if (source === 'server') {
           if (saveTimer) clearTimeout(saveTimer);
           saveTimer = setTimeout(() => {
-            localStorage.setItem('geds_scanned_cache', JSON.stringify(grouped));
-            console.log('💾 Scanned entries cached to localStorage');
+            setScannedEntries(current => {
+              localStorage.setItem('geds_scanned_cache', JSON.stringify(current));
+              console.log('💾 Scanned entries cached to localStorage');
+              return current;
+            });
           }, 1000); // 1 saniye bekle
         }
       },
@@ -267,13 +328,20 @@ const App: React.FC = () => {
 
         // Firebase quota aşımı kontrolü
         if (error.code === 'resource-exhausted' || error.message.includes('quota')) {
-          alert('⚠️ Firebase Ücretsiz Limit Aşıldı!\n\nKaydedilen TC\'ler görüntülenemiyor.\n\nÇözüm: Firebase projenizi Blaze (Kullandıkça Öde) planına yükseltin.\n\nNot: Yeni kayıtlar eklenebilir ancak mevcut kayıtlar görüntülenemez.');
+          alert('⚠️ Firebase Limit Aşıldı!\n\nKaydedilen TC\'ler görüntülenemiyor.\n\nNot: Yeni kayıtlar eklenebilir ancak mevcut kayıtlar görüntülenemez.');
         } else {
           alert(`Firebase Bağlantı Hatası: ${error.message}`);
         }
 
-        // Hata durumunda boş veri göster
-        setScannedEntries({});
+        // Hata durumunda cache'den yükle
+        const cachedEntries = localStorage.getItem('geds_scanned_cache');
+        if (cachedEntries) {
+          try {
+            setScannedEntries(JSON.parse(cachedEntries));
+          } catch (e) {
+            console.error('Error parsing cached scanned entries:', e);
+          }
+        }
       }
     );
 
@@ -281,7 +349,7 @@ const App: React.FC = () => {
       unsubEntries();
       if (saveTimer) clearTimeout(saveTimer);
     };
-  }, [session.isAuthenticated]); // session.isAuthenticated değiştiğinde çalış
+  }, [session.isAuthenticated, events]); // events değiştiğinde de çalış (ACTIVE/PASSIVE geçişleri için)
 
   // --- Handlers (Now using Firestore) ---
 
@@ -375,8 +443,8 @@ const App: React.FC = () => {
 
         console.log(`📊 Events with missing scanned entries: ${missingEventIds.length} of ${eventIdsToLoad.length} (loading only first ${SCANNED_ENTRIES_LIMIT})`);
 
-        // BATCH OPTIMIZATION: 10 etkinlik gruplarında yükle
-        const BATCH_SIZE = 10;
+        // BATCH OPTIMIZATION: 5 etkinlik gruplarında yükle (10'dan azaltıldı)
+        const BATCH_SIZE = 5;
         const allScanned: ScanEntry[] = [];
 
         for (let i = 0; i < eventIdsToLoad.length; i += BATCH_SIZE) {
@@ -894,28 +962,37 @@ const App: React.FC = () => {
   }
 
   return (
-    <AdminDashboard
-      currentUser={session.currentUser}
-      events={events}
-      passiveEvents={passiveEvents}
-      totalPassiveCount={totalPassiveCount}
-      onLoadPassiveEvents={loadPassiveEvents}
-      onLoadOlderEntriesForEvent={loadOlderEntriesForEvent}
-      users={users}
-      scannedEntries={scannedEntries}
-      onLogout={handleLogout}
-      onStartAudit={handleStartAudit}
-      onAddEvent={handleAddEvent}
-      onUpdateEvent={handleUpdateEvent}
-      onDeleteEvent={handleDeleteEvent}
-      onReactivateEvent={handleReactivateEvent}
-      onAddUser={handleAddUser}
-      onUpdateUser={handleUpdateUser}
-      onDeleteUser={handleDeleteUser}
-      onCleanDuplicates={handleCleanDuplicates}
-      isDarkMode={isDarkMode}
-      onToggleTheme={toggleTheme}
-    />
+    <>
+      {/* Help Guide Modal */}
+      <HelpGuide
+        isOpen={isHelpGuideOpen}
+        onClose={() => setIsHelpGuideOpen(false)}
+      />
+
+      <AdminDashboard
+        currentUser={session.currentUser}
+        events={events}
+        passiveEvents={passiveEvents}
+        totalPassiveCount={totalPassiveCount}
+        onLoadPassiveEvents={loadPassiveEvents}
+        onLoadOlderEntriesForEvent={loadOlderEntriesForEvent}
+        users={users}
+        scannedEntries={scannedEntries}
+        onLogout={handleLogout}
+        onStartAudit={handleStartAudit}
+        onAddEvent={handleAddEvent}
+        onUpdateEvent={handleUpdateEvent}
+        onDeleteEvent={handleDeleteEvent}
+        onReactivateEvent={handleReactivateEvent}
+        onAddUser={handleAddUser}
+        onUpdateUser={handleUpdateUser}
+        onDeleteUser={handleDeleteUser}
+        onCleanDuplicates={handleCleanDuplicates}
+        isDarkMode={isDarkMode}
+        onToggleTheme={toggleTheme}
+        onOpenHelpGuide={() => setIsHelpGuideOpen(true)}
+      />
+    </>
   );
 };
 

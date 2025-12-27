@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Event, User, UserRole, ScanEntry, Company } from '../types';
-import { Plus, Users, Calendar, Play, LogOut, Eye, Trash2, Edit, UserCog, Key, ShieldCheck, User as UserIcon, Activity, Archive, Download, RefreshCw, Clock, X, CheckCircle, Sun, Moon, AlertCircle, ChevronDown, Folder, Upload } from 'lucide-react';
+import { Plus, Users, Calendar, Play, LogOut, Eye, Trash2, Edit, UserCog, Key, ShieldCheck, User as UserIcon, Activity, Archive, Download, RefreshCw, Clock, X, CheckCircle, Sun, Moon, AlertCircle, ChevronDown, Folder, Upload, HelpCircle } from 'lucide-react';
 
 interface AdminDashboardProps {
   currentUser: User;
@@ -23,6 +23,7 @@ interface AdminDashboardProps {
   isDarkMode: boolean;
   onToggleTheme: () => void;
   onCleanDuplicates: (eventId: string) => void;
+  onOpenHelpGuide?: () => void;
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({
@@ -45,7 +46,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onUpdateEvent,
   isDarkMode,
   onToggleTheme,
-  onCleanDuplicates
+  onCleanDuplicates,
+  onOpenHelpGuide
 }) => {
   const [activeTab, setActiveTab] = useState<'EVENTS' | 'USERS'>('EVENTS');
   const [showEventModal, setShowEventModal] = useState(false);
@@ -841,6 +843,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               >
                 {isDarkMode ? <Sun size={14} /> : <Moon size={14} />}
               </button>
+              {onOpenHelpGuide && (
+                <button
+                  onClick={onOpenHelpGuide}
+                  className="px-1.5 py-1.5 bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-lg text-xs font-medium hover:bg-green-100 dark:hover:bg-green-900/50 transition"
+                  title="Yardım ve Kullanım Kılavuzu"
+                >
+                  <HelpCircle size={14} />
+                </button>
+              )}
               <button
                 onClick={() => setShowSelfPasswordChange(true)}
                 className="px-1.5 py-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg text-xs font-medium hover:bg-blue-100 dark:hover:bg-blue-900/50 transition"
