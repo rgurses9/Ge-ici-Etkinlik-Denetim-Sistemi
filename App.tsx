@@ -787,6 +787,16 @@ const App: React.FC = () => {
     try {
       console.log('🗑️ Deleting scan entry:', entryId);
 
+      // OPTIMISTIC UI UPDATE: Immediately remove from local state
+      setScannedEntries(prev => {
+        const updated = { ...prev };
+        if (updated[activeEventId]) {
+          updated[activeEventId] = updated[activeEventId].filter(e => e.id !== entryId);
+          console.log('✅ Entry removed from local state (optimistic)');
+        }
+        return updated;
+      });
+
       // 1. Delete Entry from Firestore
       await deleteDoc(doc(db, 'scanned_entries', entryId));
       console.log('✅ Entry deleted from Firestore');
@@ -800,10 +810,11 @@ const App: React.FC = () => {
         console.log('✅ Event count decremented');
       }
 
-      // Note: Local state will be updated automatically by Firestore listener
+      // Note: Firestore listener will sync if needed
     } catch (e) {
       console.error("❌ Error deleting scan: ", e);
       alert('Kayıt silinemedi: ' + (e as Error).message);
+      // Listener will restore correct state on error
     }
   };
 
