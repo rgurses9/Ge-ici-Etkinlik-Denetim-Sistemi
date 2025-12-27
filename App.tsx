@@ -642,22 +642,28 @@ const App: React.FC = () => {
         });
         console.log('✅ Event marked as PASSIVE:', activeEventId);
 
+        // Event'i local state'den kaldır (artık ACTIVE değil)
+        const finishedEvent = events.find(e => e.id === activeEventId);
+        if (finishedEvent) {
+          const updatedEvent = {
+            ...finishedEvent,
+            status: 'PASSIVE' as const,
+            completionDuration: duration,
+            closedAt: Date.now()
+          };
+
+          // Events listesinden kaldır
+          setEvents(prev => prev.filter(e => e.id !== activeEventId));
+
+          // Passive events listesine ekle
+          setPassiveEvents(prev => [updatedEvent, ...prev]);
+          console.log('✅ Moved event from active to passive list');
+        }
+
         // Pasif etkinlikleri otomatik yükle (eğer henüz yüklenmemişse)
         if (!passiveEventsLoaded) {
           console.log('🔄 Auto-loading passive events...');
           await loadPassiveEvents();
-        } else {
-          // Eğer zaten yüklenmişse, sadece listeye ekle
-          const finishedEvent = events.find(e => e.id === activeEventId);
-          if (finishedEvent) {
-            const updatedEvent = {
-              ...finishedEvent,
-              status: 'PASSIVE' as const,
-              completionDuration: duration
-            };
-            setPassiveEvents(prev => [updatedEvent, ...prev]);
-            console.log('✅ Added to passive events list');
-          }
         }
 
         setActiveEventId(null);
@@ -768,21 +774,36 @@ const App: React.FC = () => {
   };
 
   const handleDeleteScan = async (entryId: string) => {
-    if (!activeEventId) return;
+    if (!activeEventId) {
+      console.error('❌ No active event ID');
+      return;
+    }
+
+    // Confirmation dialog
+    if (!window.confirm('Bu kaydı silmek istediğinizden emin misiniz?')) {
+      return;
+    }
 
     try {
-      // 1. Delete Entry
-      await deleteDoc(doc(db, 'scanned_entries', entryId));
+      console.log('🗑️ Deleting scan entry:', entryId);
 
-      // 2. Decrement Event Count
+      // 1. Delete Entry from Firestore
+      await deleteDoc(doc(db, 'scanned_entries', entryId));
+      console.log('✅ Entry deleted from Firestore');
+
+      // 2. Decrement Event Count (optional, depends on your logic)
       const event = events.find(e => e.id === activeEventId);
-      if (event) {
+      if (event && event.currentCount > 0) {
         await updateDoc(doc(db, 'events', activeEventId), {
           currentCount: Math.max(0, event.currentCount - 1)
         });
+        console.log('✅ Event count decremented');
       }
+
+      // Note: Local state will be updated automatically by Firestore listener
     } catch (e) {
-      console.error("Error deleting scan: ", e);
+      console.error("❌ Error deleting scan: ", e);
+      alert('Kayıt silinemedi: ' + (e as Error).message);
     }
   };
 
