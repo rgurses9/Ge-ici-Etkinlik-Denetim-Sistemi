@@ -56,8 +56,8 @@ const HelpGuide: React.FC<HelpGuideProps> = ({ isOpen, onClose }) => {
                         <button
                             onClick={() => setActiveSection('full')}
                             className={`flex-1 px-4 py-3 text-sm font-semibold transition-colors ${activeSection === 'full'
-                                    ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 border-b-2 border-blue-600'
-                                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                                ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 border-b-2 border-blue-600'
+                                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
                                 }`}
                         >
                             <div className="flex items-center justify-center gap-2">
@@ -175,6 +175,10 @@ const HelpGuide: React.FC<HelpGuideProps> = ({ isOpen, onClose }) => {
                                             <li className="flex items-start gap-2">
                                                 <RefreshCw size={16} className="text-purple-600 dark:text-purple-400 shrink-0 mt-0.5" />
                                                 <span><strong>Canlı Senkronizasyon:</strong> Tüm okutmalar anlık olarak diğer cihazlara yansır</span>
+                                            </li>
+                                            <li className="flex items-start gap-2">
+                                                <AlertCircle size={16} className="text-purple-600 dark:text-purple-400 shrink-0 mt-0.5" />
+                                                <span><strong>Etkinlik Gözükmüyor:</strong> Giriş yaptınız ama hiçbir etkinlik gelmiyorsa, başka bir tarayıcıdan (Chrome, Firefox, Safari) giriş yapın. Sorun devam ederse yöneticiler ile iletişime geçin</span>
                                             </li>
                                         </ul>
                                     </div>
