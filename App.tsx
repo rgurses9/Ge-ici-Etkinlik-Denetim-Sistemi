@@ -274,10 +274,10 @@ const App: React.FC = () => {
     console.log(`🔄 Starting Scanned Entries subscription for ${activeEventIds.length} ACTIVE events...`);
 
     // Sadece aktif etkinliklerin kayıtlarını dinle
+    // NOT: orderBy kaldırıldı çünkü 'where in' ile birlikte composite index gerektirir
     const q = query(
       collection(db, 'scanned_entries'),
-      where('eventId', 'in', activeEventIds.slice(0, 10)), // Firebase 'in' limiti: max 10
-      orderBy('id', 'desc')
+      where('eventId', 'in', activeEventIds.slice(0, 10)) // Firebase 'in' limiti: max 10
     );
 
     // Debounce timer for localStorage writes
@@ -291,6 +291,9 @@ const App: React.FC = () => {
         console.log(`📊 Scanned entries loaded from ${source}: ${snapshot.docs.length} entries (ACTIVE events only)`);
 
         const fetchedEntries: ScanEntry[] = snapshot.docs.map(doc => doc.data() as ScanEntry);
+
+        // Client-side sorting by id (descending) - id is string, convert to number
+        fetchedEntries.sort((a, b) => Number(b.id) - Number(a.id));
 
         // Group by eventId
         const grouped: Record<string, ScanEntry[]> = {};
