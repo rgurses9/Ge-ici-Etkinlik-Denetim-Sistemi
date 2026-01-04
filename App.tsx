@@ -206,6 +206,21 @@ const App: React.FC = () => {
         const source = snapshot.metadata.fromCache ? 'cache' : 'server';
         console.log(`📊 Events loaded from ${source}: ${snapshot.docs.length} events`);
 
+        // Log snapshot changes (added, modified, removed)
+        if (!snapshot.metadata.fromCache) {
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === 'added') {
+              console.log('➕ Event added:', change.doc.data().name);
+            }
+            if (change.type === 'modified') {
+              console.log('✏️ Event modified:', change.doc.data().name);
+            }
+            if (change.type === 'removed') {
+              console.log('➖ Event removed:', change.doc.data().name);
+            }
+          });
+        }
+
         const fetchedEvents: Event[] = snapshot.docs.map(doc => doc.data() as Event);
 
         // Seed Initial Events if DB is empty (only on first load)
@@ -574,8 +589,11 @@ const App: React.FC = () => {
   };
 
   const handleDeleteEvent = async (id: string) => {
+    console.log('🗑️ Deleting event:', id);
     try {
       await deleteDoc(doc(db, 'events', id));
+      console.log('✅ Event deleted from Firestore:', id);
+      console.log('⏳ Waiting for real-time listener to update UI...');
 
       // Silinen etkinliği passiveEvents state'inden de kaldır
       setPassiveEvents(prev => {
@@ -588,9 +606,10 @@ const App: React.FC = () => {
       // Toplam pasif etkinlik sayısını da güncelle
       setTotalPassiveCount(prev => Math.max(0, prev - 1));
 
+      // Note: Active events will be automatically removed by the real-time listener
       // Optionally delete related scans (batch delete usually required for many docs)
     } catch (e) {
-      console.error("Error deleting event: ", e);
+      console.error("❌ Error deleting event: ", e);
     }
   };
 
