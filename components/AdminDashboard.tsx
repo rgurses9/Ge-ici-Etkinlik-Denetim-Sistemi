@@ -488,23 +488,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: true, defval: null }) as any[][];
 
         console.log(`📊 Total rows in Excel: ${jsonData.length}`);
-        console.log(`📊 Processing ${jsonData.length - 1} rows (excluding header)`);
+        console.log(`📊 Excel file has NO HEADER row - all rows contain event data`);
+        console.log(`📊 Processing all rows 1-${jsonData.length} (${jsonData.length} data rows)`);
 
         let createdCount = 0;
         let skippedCount = 0;
 
-        // Skip header row, start from index 1
-        for (let i = 1; i < jsonData.length; i++) {
+        // Process ALL rows (no header row to skip)
+        for (let i = 0; i < jsonData.length; i++) {
           const row = jsonData[i];
+          const excelRowNumber = i + 1; // Excel row number (1-indexed, human-readable)
 
           // Skip completely empty rows
           if (!row || row.every(cell => cell === null || cell === undefined || cell === '')) {
-            console.log(`⏭️ Row ${i + 1}: Skipped (empty row)`);
+            console.log(`⏭️ Excel Row ${excelRowNumber} (index ${i}): Skipped (empty row)`);
             continue; // Don't count empty rows as skipped
           }
 
           if (row.length < 6) {
-            console.log(`⏭️ Row ${i + 1}: Skipped (insufficient columns, has ${row.length} columns, need at least 6)`);
+            console.log(`⏭️ Excel Row ${excelRowNumber} (index ${i}): Skipped (insufficient columns, has ${row.length} columns, need at least 6)`);
             skippedCount++;
             continue;
           }
@@ -1503,7 +1505,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     value={editEventName}
                     onChange={(e) => setEditEventName(e.target.value)}
                     className="w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 border border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-secondary-500 outline-none"
-                    placeholder="Galatasaray - Fenerbahçe"
+                    placeholder="Etkinlik İsmi Giriniz"
                     required
                   />
                 </div>
@@ -1519,7 +1521,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       setEditEventTarget(value);
                     }}
                     className="w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 border border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-secondary-500 outline-none"
-                    placeholder="Örn: 50"
+                    placeholder="Hedef Kişi Sayısı Giriniz"
                     required={!editHasMultipleCompanies}
                     disabled={editHasMultipleCompanies}
                   />
@@ -1789,7 +1791,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     value={newEventName}
                     onChange={(e) => setNewEventName(e.target.value)}
                     className="w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 border border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-secondary-500 outline-none"
-                    placeholder="Galatasaray - Fenerbahçe"
+                    placeholder="Etkinlik İsmi Giriniz"
                     required
                   />
                 </div>
@@ -1805,7 +1807,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       setNewEventTarget(value);
                     }}
                     className="w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 border border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-secondary-500 outline-none"
-                    placeholder="Örn: 50"
+                    placeholder="Hedef Kişi Sayısı Giriniz"
                     required={!hasMultipleCompanies}
                     disabled={hasMultipleCompanies}
                   />
