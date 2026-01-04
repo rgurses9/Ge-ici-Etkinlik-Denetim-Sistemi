@@ -184,7 +184,7 @@ const App: React.FC = () => {
     loadUsers();
   }, []); // Sadece mount'ta çalış
 
-  // 2. Events - 12 HOUR CACHE (Sadece authenticated kullanıcılar için)
+  // 2. Events - REAL-TIME LISTENER (Sadece authenticated kullanıcılar için)
   useEffect(() => {
     // Login olmamışsa Firebase'e bağlanma
     if (!session.isAuthenticated) {
@@ -192,53 +192,41 @@ const App: React.FC = () => {
       return;
     }
 
-    const EVENTS_CACHE_KEY = 'geds_events_cache';
-    const EVENTS_CACHE_TIMESTAMP_KEY = 'geds_events_cache_timestamp';
-    const CACHE_DURATION = 12 * 60 * 60 * 1000; // 12 saat
+    console.log('🔄 Starting real-time Events listener...');
 
-    const loadEvents = async () => {
-      // Check cache first
-      const cachedTimestamp = localStorage.getItem(EVENTS_CACHE_TIMESTAMP_KEY);
-      const cachedData = localStorage.getItem(EVENTS_CACHE_KEY);
+    // Real-time listener for events
+    const q = query(
+      collection(db, 'events'),
+      where('status', '!=', 'PASSIVE') // Sadece ACTIVE ve IN_PROGRESS etkinlikler
+    );
 
-      if (cachedTimestamp && cachedData) {
-        const cacheAge = Date.now() - parseInt(cachedTimestamp);
-        if (cacheAge < CACHE_DURATION) {
-          console.log(`✅ Using cached events (age: ${Math.floor(cacheAge / 1000 / 60)} minutes)`);
-          try {
-            const cached = JSON.parse(cachedData);
-            setEvents(cached);
-            return;
-          } catch (e) {
-            console.error('Error parsing cached events:', e);
-          }
-        }
-      }
+    const unsubscribe = onSnapshot(
+      q,
+      async (snapshot) => {
+        const source = snapshot.metadata.fromCache ? 'cache' : 'server';
+        console.log(`📊 Events loaded from ${source}: ${snapshot.docs.length} events`);
 
-      // Cache expired or doesn't exist, fetch from Firebase
-      console.log('🔄 Loading events from Firebase (cache expired)...');
-      try {
-        const q = collection(db, 'events');
-        const snapshot = await getDocs(q);
         const fetchedEvents: Event[] = snapshot.docs.map(doc => doc.data() as Event);
 
-        // Seed Initial Events if DB is empty
-        if (fetchedEvents.length === 0) {
+        // Seed Initial Events if DB is empty (only on first load)
+        if (fetchedEvents.length === 0 && source === 'server') {
           console.log("🌱 Seeding initial events to Firestore...");
           for (const event of INITIAL_EVENTS) {
             await setDoc(doc(db, 'events', event.id), event);
           }
-          setEvents(INITIAL_EVENTS);
-          localStorage.setItem(EVENTS_CACHE_KEY, JSON.stringify(INITIAL_EVENTS));
-          localStorage.setItem(EVENTS_CACHE_TIMESTAMP_KEY, Date.now().toString());
-          console.log("✅ Initial events seeded and cached");
+          // Don't set state here, listener will trigger again
         } else {
           setEvents(fetchedEvents);
-          localStorage.setItem(EVENTS_CACHE_KEY, JSON.stringify(fetchedEvents));
-          localStorage.setItem(EVENTS_CACHE_TIMESTAMP_KEY, Date.now().toString());
-          console.log(`✅ Events loaded and cached: ${fetchedEvents.length} (valid for 12 hours)`);
+
+          // Cache'i güncelle (sadece server'dan gelen veriler için)
+          if (source === 'server') {
+            localStorage.setItem('geds_events_cache', JSON.stringify(fetchedEvents));
+            localStorage.setItem('geds_events_cache_timestamp', Date.now().toString());
+            console.log(`✅ Events cached: ${fetchedEvents.length} (real-time sync active)`);
+          }
         }
-      } catch (error: any) {
+      },
+      (error: any) => {
         console.error("❌ Firebase Events Error:", error);
         if (error.code === 'resource-exhausted' || error.message?.includes('quota')) {
           alert('⚠️ Firebase Limit Aşıldı!\n\nEtkinlik verileri yüklenemedi.');
@@ -246,10 +234,23 @@ const App: React.FC = () => {
           alert('⚠️ Firebase İzin Hatası!\n\nGeçici çözüm: Initial events yüklendi.');
           setEvents(INITIAL_EVENTS);
         }
-      }
-    };
 
-    loadEvents();
+        // Hata durumunda cache'den yükle
+        const cachedData = localStorage.getItem('geds_events_cache');
+        if (cachedData) {
+          try {
+            setEvents(JSON.parse(cachedData));
+          } catch (e) {
+            console.error('Error parsing cached events:', e);
+          }
+        }
+      }
+    );
+
+    return () => {
+      console.log('🔌 Unsubscribing from Events listener');
+      unsubscribe();
+    };
   }, [session.isAuthenticated]); // session.isAuthenticated değiştiğinde çalış
 
   // 3. Scanned Entries - OPTIMIZED (Sadece ACTIVE/IN_PROGRESS etkinlikler için)
@@ -295,6 +296,7 @@ const App: React.FC = () => {
         // Client-side sorting by id (descending) - id is string, convert to number
         fetchedEntries.sort((a, b) => Number(b.id) - Number(a.id));
 
+
         // Group by eventId
         const grouped: Record<string, ScanEntry[]> = {};
         fetchedEntries.forEach(entry => {
@@ -304,13 +306,21 @@ const App: React.FC = () => {
           grouped[entry.eventId].push(entry);
         });
 
-        // Mevcut cache'deki PASSIVE etkinlik kayıtlarını koru
+        // Update state - COMPLETELY REPLACE active event entries (to handle deletions)
         setScannedEntries(prev => {
           const updated = { ...prev };
-          // Yeni aktif etkinlik kayıtlarını ekle/güncelle
-          Object.keys(grouped).forEach(eventId => {
-            updated[eventId] = grouped[eventId];
+
+          // First, clear all active event entries (to detect deletions)
+          activeEventIds.forEach(eventId => {
+            if (grouped[eventId]) {
+              // Replace with fresh data from server
+              updated[eventId] = grouped[eventId];
+            } else {
+              // Event has no entries, set to empty array
+              updated[eventId] = [];
+            }
           });
+
           return updated;
         });
 
@@ -773,6 +783,7 @@ const App: React.FC = () => {
     }
   };
 
+
   const handleDeleteScan = async (entryId: string) => {
     if (!activeEventId) {
       console.error('❌ No active event ID');
@@ -787,16 +798,6 @@ const App: React.FC = () => {
     try {
       console.log('🗑️ Deleting scan entry:', entryId);
 
-      // OPTIMISTIC UI UPDATE: Immediately remove from local state
-      setScannedEntries(prev => {
-        const updated = { ...prev };
-        if (updated[activeEventId]) {
-          updated[activeEventId] = updated[activeEventId].filter(e => e.id !== entryId);
-          console.log('✅ Entry removed from local state (optimistic)');
-        }
-        return updated;
-      });
-
       // 1. Delete Entry from Firestore
       await deleteDoc(doc(db, 'scanned_entries', entryId));
       console.log('✅ Entry deleted from Firestore');
@@ -810,11 +811,11 @@ const App: React.FC = () => {
         console.log('✅ Event count decremented');
       }
 
-      // Note: Firestore listener will sync if needed
+      // Note: Firestore listener will automatically sync the deletion for all users
+      console.log('✅ Deletion complete - waiting for real-time sync...');
     } catch (e) {
       console.error("❌ Error deleting scan: ", e);
       alert('Kayıt silinemedi: ' + (e as Error).message);
-      // Listener will restore correct state on error
     }
   };
 
