@@ -591,9 +591,17 @@ const App: React.FC = () => {
   const handleDeleteEvent = async (id: string) => {
     console.log('🗑️ Deleting event:', id);
     try {
+      // OPTIMISTIC UPDATE: Immediately remove from local state
+      setEvents(prev => {
+        const updated = prev.filter(e => e.id !== id);
+        console.log(`🔄 Optimistically removed event from state. Remaining: ${updated.length}`);
+        return updated;
+      });
+
+      // Delete from Firestore
       await deleteDoc(doc(db, 'events', id));
       console.log('✅ Event deleted from Firestore:', id);
-      console.log('⏳ Waiting for real-time listener to update UI...');
+      console.log('⏳ Real-time listener should confirm deletion...');
 
       // Silinen etkinliği passiveEvents state'inden de kaldır
       setPassiveEvents(prev => {
@@ -606,10 +614,11 @@ const App: React.FC = () => {
       // Toplam pasif etkinlik sayısını da güncelle
       setTotalPassiveCount(prev => Math.max(0, prev - 1));
 
-      // Note: Active events will be automatically removed by the real-time listener
-      // Optionally delete related scans (batch delete usually required for many docs)
+      // Note: Real-time listener will sync if needed (but we don't wait for it)
     } catch (e) {
       console.error("❌ Error deleting event: ", e);
+      // On error, listener will restore correct state
+      alert('Etkinlik silinemedi: ' + (e as Error).message);
     }
   };
 
