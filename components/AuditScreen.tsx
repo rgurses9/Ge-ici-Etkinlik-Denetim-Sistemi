@@ -216,6 +216,9 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   const [showCompletionWarning, setShowCompletionWarning] = useState(false);
   const prevTotalCountRef = useRef(0);
 
+  // Recently scanned TCs tracker (to prevent rapid duplicate scans)
+  const recentlyScannedTCs = useRef<Map<string, number>>(new Map());
+
   useEffect(() => {
     // Birden fazla şirket varsa, TÜM şirketlerin toplam hedefini kontrol et
     if (event.companies && event.companies.length > 0) {
@@ -322,6 +325,21 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
     if (trimmedTC.length !== 11) {
       setLastScanResult({ status: 'ERROR', message: 'TC Kimlik Numarası 11 haneli olmalıdır.' });
+      return;
+    }
+
+    // MÜKERRER OKUMA KONTROLÜ - Recently scanned check (3 saniye cooldown)
+    const now = Date.now();
+    const lastScanTime = recentlyScannedTCs.current.get(trimmedTC);
+    const COOLDOWN_MS = 3000; // 3 saniye
+
+    if (lastScanTime && (now - lastScanTime) < COOLDOWN_MS) {
+      const remainingSeconds = Math.ceil((COOLDOWN_MS - (now - lastScanTime)) / 1000);
+      setLastScanResult({
+        status: 'ERROR',
+        message: `⚠️ MÜKERRER OKUMA HATASI! Bu kimlik ${remainingSeconds} saniye önce okutuldu. Lütfen bekleyin.`
+      });
+      setTcInput('');
       return;
     }
 
@@ -466,6 +484,14 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       recordedBy: currentUser.username,
       ...(activeCompanyId && { companyId: activeCompanyId })
     };
+
+    // Track this TC as recently scanned
+    recentlyScannedTCs.current.set(trimmedTC, Date.now());
+
+    // Auto-remove from tracker after cooldown period
+    setTimeout(() => {
+      recentlyScannedTCs.current.delete(trimmedTC);
+    }, 3000); // 3 saniye sonra temizle
 
     // Fire and forget (Optimistic UI handled by Firestore listener in App.tsx)
     onScan(newEntry);

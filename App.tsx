@@ -289,92 +289,106 @@ const App: React.FC = () => {
 
     console.log(`🔄 Starting Scanned Entries subscription for ${activeEventIds.length} ACTIVE events...`);
 
-    // Sadece aktif etkinliklerin kayıtlarını dinle
-    // NOT: orderBy kaldırıldı çünkü 'where in' ile birlikte composite index gerektirir
-    const q = query(
-      collection(db, 'scanned_entries'),
-      where('eventId', 'in', activeEventIds.slice(0, 10)) // Firebase 'in' limiti: max 10
-    );
+    // Firebase 'in' query limiti 10, bu yüzden batch'ler halinde listener oluşturuyoruz
+    const BATCH_SIZE = 10;
+    const batches: string[][] = [];
+
+    for (let i = 0; i < activeEventIds.length; i += BATCH_SIZE) {
+      batches.push(activeEventIds.slice(i, i + BATCH_SIZE));
+    }
+
+    console.log(`📦 Created ${batches.length} batches for ${activeEventIds.length} events`);
 
     // Debounce timer for localStorage writes
     let saveTimer: NodeJS.Timeout | null = null;
+    const unsubscribers: (() => void)[] = [];
 
-    const unsubEntries = onSnapshot(
-      q,
-      (snapshot) => {
-        // Check if data is from cache or server
-        const source = snapshot.metadata.fromCache ? 'cache' : 'server';
-        console.log(`📊 Scanned entries loaded from ${source}: ${snapshot.docs.length} entries (ACTIVE events only)`);
+    // Her batch için ayrı listener oluştur
+    batches.forEach((batchIds, batchIndex) => {
+      const q = query(
+        collection(db, 'scanned_entries'),
+        where('eventId', 'in', batchIds)
+      );
 
-        const fetchedEntries: ScanEntry[] = snapshot.docs.map(doc => doc.data() as ScanEntry);
+      const unsubEntries = onSnapshot(
+        q,
+        (snapshot) => {
+          // Check if data is from cache or server
+          const source = snapshot.metadata.fromCache ? 'cache' : 'server';
+          console.log(`📊 Batch ${batchIndex + 1}/${batches.length}: Scanned entries loaded from ${source}: ${snapshot.docs.length} entries`);
 
-        // Client-side sorting by id (descending) - id is string, convert to number
-        fetchedEntries.sort((a, b) => Number(b.id) - Number(a.id));
+          const fetchedEntries: ScanEntry[] = snapshot.docs.map(doc => doc.data() as ScanEntry);
 
+          // Client-side sorting by id (descending) - id is string, convert to number
+          fetchedEntries.sort((a, b) => Number(b.id) - Number(a.id));
 
-        // Group by eventId
-        const grouped: Record<string, ScanEntry[]> = {};
-        fetchedEntries.forEach(entry => {
-          if (!grouped[entry.eventId]) {
-            grouped[entry.eventId] = [];
-          }
-          grouped[entry.eventId].push(entry);
-        });
-
-        // Update state - COMPLETELY REPLACE active event entries (to handle deletions)
-        setScannedEntries(prev => {
-          const updated = { ...prev };
-
-          // First, clear all active event entries (to detect deletions)
-          activeEventIds.forEach(eventId => {
-            if (grouped[eventId]) {
-              // Replace with fresh data from server
-              updated[eventId] = grouped[eventId];
-            } else {
-              // Event has no entries, set to empty array
-              updated[eventId] = [];
+          // Group by eventId
+          const grouped: Record<string, ScanEntry[]> = {};
+          fetchedEntries.forEach(entry => {
+            if (!grouped[entry.eventId]) {
+              grouped[entry.eventId] = [];
             }
+            grouped[entry.eventId].push(entry);
           });
 
-          return updated;
-        });
+          // Update state - MERGE with existing data from other batches
+          setScannedEntries(prev => {
+            const updated = { ...prev };
 
-        // Debounced localStorage write (sadece server'dan gelen veriler için)
-        if (source === 'server') {
-          if (saveTimer) clearTimeout(saveTimer);
-          saveTimer = setTimeout(() => {
-            setScannedEntries(current => {
-              localStorage.setItem('geds_scanned_cache', JSON.stringify(current));
-              console.log('💾 Scanned entries cached to localStorage');
-              return current;
+            // Update only the events in this batch
+            batchIds.forEach(eventId => {
+              if (grouped[eventId]) {
+                // Replace with fresh data from server
+                updated[eventId] = grouped[eventId];
+              } else {
+                // Event has no entries, set to empty array
+                updated[eventId] = [];
+              }
             });
-          }, 1000); // 1 saniye bekle
-        }
-      },
-      (error) => {
-        console.error("❌ Firebase Scanned Entries Error:", error);
 
-        // Firebase quota aşımı kontrolü
-        if (error.code === 'resource-exhausted' || error.message.includes('quota')) {
-          alert('⚠️ Firebase Limit Aşıldı!\n\nKaydedilen TC\'ler görüntülenemiyor.\n\nNot: Yeni kayıtlar eklenebilir ancak mevcut kayıtlar görüntülenemez.');
-        } else {
-          alert(`Firebase Bağlantı Hatası: ${error.message}`);
-        }
+            return updated;
+          });
 
-        // Hata durumunda cache'den yükle
-        const cachedEntries = localStorage.getItem('geds_scanned_cache');
-        if (cachedEntries) {
-          try {
-            setScannedEntries(JSON.parse(cachedEntries));
-          } catch (e) {
-            console.error('Error parsing cached scanned entries:', e);
+          // Debounced localStorage write (sadece server'dan gelen veriler için)
+          if (source === 'server') {
+            if (saveTimer) clearTimeout(saveTimer);
+            saveTimer = setTimeout(() => {
+              setScannedEntries(current => {
+                localStorage.setItem('geds_scanned_cache', JSON.stringify(current));
+                console.log('💾 Scanned entries cached to localStorage');
+                return current;
+              });
+            }, 1000); // 1 saniye bekle
+          }
+        },
+        (error) => {
+          console.error(`❌ Firebase Scanned Entries Error (Batch ${batchIndex + 1}):`, error);
+
+          // Firebase quota aşımı kontrolü
+          if (error.code === 'resource-exhausted' || error.message.includes('quota')) {
+            alert('⚠️ Firebase Limit Aşıldı!\n\nKaydedilen TC\'ler görüntülenemiyor.\n\nNot: Yeni kayıtlar eklenebilir ancak mevcut kayıtlar görüntülenemez.');
+          } else {
+            alert(`Firebase Bağlantı Hatası: ${error.message}`);
+          }
+
+          // Hata durumunda cache'den yükle
+          const cachedEntries = localStorage.getItem('geds_scanned_cache');
+          if (cachedEntries) {
+            try {
+              setScannedEntries(JSON.parse(cachedEntries));
+            } catch (e) {
+              console.error('Error parsing cached scanned entries:', e);
+            }
           }
         }
-      }
-    );
+      );
+
+      unsubscribers.push(unsubEntries);
+    });
 
     return () => {
-      unsubEntries();
+      console.log(`🔌 Unsubscribing from ${unsubscribers.length} Scanned Entries listeners`);
+      unsubscribers.forEach(unsub => unsub());
       if (saveTimer) clearTimeout(saveTimer);
     };
   }, [session.isAuthenticated, events]); // events değiştiğinde de çalış (ACTIVE/PASSIVE geçişleri için)
