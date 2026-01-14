@@ -5,7 +5,7 @@ import AuditScreen from './components/AuditScreen';
 import HelpGuide from './components/HelpGuide';
 import { User, Event, ScanEntry, SessionState, Citizen } from './types';
 import { INITIAL_USERS, INITIAL_EVENTS } from './constants';
-import { db } from './firebase';
+import { db, realtimeDb } from './firebase';
 import {
   collection,
   onSnapshot,
@@ -20,6 +20,13 @@ import {
   getDocs,
   limit
 } from 'firebase/firestore';
+import {
+  ref,
+  set,
+  onDisconnect,
+  remove,
+  serverTimestamp
+} from 'firebase/database';
 
 const App: React.FC = () => {
   // --- Global State ---
@@ -183,6 +190,42 @@ const App: React.FC = () => {
 
     loadUsers();
   }, []); // Sadece mount'ta çalış
+
+  // Presence Restore - Sayfa yenilendiğinde presence kaydını yeniden oluştur
+  useEffect(() => {
+    const restorePresence = async () => {
+      if (session.isAuthenticated && session.currentUser) {
+        // Realtime Database kontrolü
+        if (!realtimeDb) {
+          console.warn('⚠️ Realtime Database not initialized, skipping presence restore');
+          return;
+        }
+
+        try {
+          const userPresenceRef = ref(realtimeDb, `presence/${session.currentUser.id}`);
+
+          // Kullanıcı bilgilerini kaydet
+          await set(userPresenceRef, {
+            userId: session.currentUser.id,
+            username: session.currentUser.username,
+            fullName: session.currentUser.fullName,
+            loginTime: serverTimestamp(),
+            lastSeen: serverTimestamp()
+          });
+
+          // Bağlantı kesildiğinde otomatik sil
+          onDisconnect(userPresenceRef).remove();
+
+          console.log('✅ Presence kaydı restore edildi:', session.currentUser.username);
+        } catch (error) {
+          // Hata durumunda sessizce logla, uygulamanın çalışmasını engelleme
+          console.warn('⚠️ Presence kaydı restore edilemedi (non-critical):', error);
+        }
+      }
+    };
+
+    restorePresence();
+  }, [session.isAuthenticated, session.currentUser]);
 
   // 2. Events - REAL-TIME LISTENER (Sadece authenticated kullanıcılar için)
   useEffect(() => {
@@ -567,7 +610,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleLogin = (user: User) => {
+  const handleLogin = async (user: User) => {
     const newSession = {
       isAuthenticated: true,
       currentUser: user,
@@ -575,9 +618,47 @@ const App: React.FC = () => {
     setSession(newSession);
     // Session'ı localStorage'a kaydet
     localStorage.setItem('geds_session', JSON.stringify(newSession));
+
+    // Presence kaydı oluştur (opsiyonel - hata olsa bile giriş yapılabilir)
+    if (realtimeDb) {
+      try {
+        const userPresenceRef = ref(realtimeDb, `presence/${user.id}`);
+
+        // Kullanıcı bilgilerini kaydet
+        await set(userPresenceRef, {
+          userId: user.id,
+          username: user.username,
+          fullName: user.fullName,
+          loginTime: serverTimestamp(),
+          lastSeen: serverTimestamp()
+        });
+
+        // Bağlantı kesildiğinde otomatik sil
+        onDisconnect(userPresenceRef).remove();
+
+        console.log('✅ Presence kaydı oluşturuldu:', user.username);
+      } catch (error) {
+        // Hata durumunda sessizce logla, giriş yapılmasını engelleme
+        console.warn('⚠️ Presence kaydı oluşturulamadı (non-critical):', error);
+      }
+    } else {
+      console.warn('⚠️ Realtime Database not initialized, skipping presence');
+    }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Presence kaydını sil (opsiyonel - hata olsa bile çıkış yapılabilir)
+    if (session.currentUser && realtimeDb) {
+      try {
+        const userPresenceRef = ref(realtimeDb, `presence/${session.currentUser.id}`);
+        await remove(userPresenceRef);
+        console.log('✅ Presence kaydı silindi:', session.currentUser.username);
+      } catch (error) {
+        // Hata durumunda sessizce logla, çıkış yapılmasını engelleme
+        console.warn('⚠️ Presence kaydı silinemedi (non-critical):', error);
+      }
+    }
+
     setSession({
       isAuthenticated: false,
       currentUser: null,
