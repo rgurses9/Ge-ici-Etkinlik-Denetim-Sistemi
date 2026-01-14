@@ -18,12 +18,25 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const realtimeDb = getDatabase(app);
+
+// Initialize Realtime Database (with error handling)
+let realtimeDb;
+try {
+  realtimeDb = getDatabase(app);
+  console.log('✅ Realtime Database initialized');
+} catch (error) {
+  console.warn('⚠️ Realtime Database initialization failed (non-critical):', error);
+  realtimeDb = null;
+}
 
 // Initialize Analytics (only in browser environment)
 let analytics;
 if (typeof window !== 'undefined') {
-  analytics = getAnalytics(app);
+  try {
+    analytics = getAnalytics(app);
+  } catch (error) {
+    console.warn('⚠️ Analytics initialization failed:', error);
+  }
 }
 
 export { db, realtimeDb, analytics };
