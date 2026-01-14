@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, UserRole } from '../types';
-import { Lock, User as UserIcon, Settings, Eye, EyeOff, Sun, Moon } from 'lucide-react';
+import { Lock, User as UserIcon, Settings, Eye, EyeOff, Sun, Moon, Users } from 'lucide-react';
+import { realtimeDb } from '../firebase';
+import { ref, onValue } from 'firebase/database';
 
 interface LoginProps {
   users: User[];
@@ -15,6 +17,56 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loginType, setLoginType] = useState<'USER' | 'ADMIN'>('USER');
+  const [onlineUsersCount, setOnlineUsersCount] = useState(0);
+
+  // Çevrimiçi kullanıcı sayısını dinle
+  useEffect(() => {
+    // Eğer realtimeDb tanımlı değilse, sessizce çık
+    if (!realtimeDb) {
+      console.warn('⚠️ Realtime Database not initialized');
+      return;
+    }
+
+    try {
+      const presenceRef = ref(realtimeDb, 'presence');
+
+      const unsubscribe = onValue(
+        presenceRef,
+        (snapshot) => {
+          try {
+            if (snapshot.exists()) {
+              const presenceData = snapshot.val();
+              // Aktif kullanıcıları say
+              const count = Object.keys(presenceData).length;
+              setOnlineUsersCount(count);
+            } else {
+              setOnlineUsersCount(0);
+            }
+          } catch (error) {
+            console.error('Error processing presence data:', error);
+            setOnlineUsersCount(0);
+          }
+        },
+        (error) => {
+          // Hata durumunda sessizce logla, sayfa açılmasını engelleme
+          console.warn('⚠️ Presence listener error (non-critical):', (error as any)?.code || error.message);
+          setOnlineUsersCount(0);
+        }
+      );
+
+      return () => {
+        try {
+          unsubscribe();
+        } catch (error) {
+          console.warn('Error unsubscribing from presence:', error);
+        }
+      };
+    } catch (error) {
+      console.error('Error setting up presence listener:', error);
+      // Hata olsa bile sayfa açılabilsin
+      return;
+    }
+  }, []);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -158,6 +210,10 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
           <div className="text-xs text-green-600 dark:text-green-400 font-medium flex items-center justify-center gap-1">
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
             Sistem Çevrimiçi
+          </div>
+          <div className="text-xs text-gray-600 dark:text-gray-400 font-medium flex items-center justify-center gap-1.5">
+            <Users size={14} />
+            <span>{onlineUsersCount} Çevrimiçi Kullanıcı</span>
           </div>
         </div>
       </div>
