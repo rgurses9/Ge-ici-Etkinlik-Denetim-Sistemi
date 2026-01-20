@@ -29,6 +29,43 @@ import {
 } from 'firebase/database';
 
 const App: React.FC = () => {
+  // --- Helper: Safe localStorage setter with quota handling ---
+  const safeSetLocalStorage = (key: string, value: string): boolean => {
+    try {
+      localStorage.setItem(key, value);
+      return true;
+    } catch (error: any) {
+      if (error.name === 'QuotaExceededError' || error.code === 22) {
+        console.warn(`⚠️ localStorage quota exceeded for key: ${key}`);
+        console.warn(`   Data size: ${(value.length / 1024).toFixed(2)} KB`);
+
+        // Try to clear old caches to make space
+        try {
+          // Clear only scanned cache if that's what's causing the issue
+          if (key === 'geds_scanned_cache') {
+            console.log('🧹 Clearing old scanned cache to make space...');
+            localStorage.removeItem('geds_scanned_cache');
+            // Try again after clearing
+            localStorage.setItem(key, value);
+            console.log('✅ Cache saved after clearing old data');
+            return true;
+          }
+        } catch (retryError) {
+          console.error('❌ Still cannot save after clearing:', retryError);
+          // Show user-friendly message
+          alert(
+            '⚠️ Depolama Alanı Dolu\n\n' +
+            'Tarayıcınızın önbelleği doldu. Bazı eski veriler saklanamıyor.\n\n' +
+            'Çözüm: Tarayıcı cache\'ini temizleyin veya gizli modda açın.'
+          );
+        }
+      } else {
+        console.error(`❌ Error saving to localStorage (${key}):`, error);
+      }
+      return false;
+    }
+  };
+
   // --- Global State ---
   // Session state'ini localStorage'dan yükle
   const [session, setSession] = useState<SessionState>(() => {
@@ -397,8 +434,12 @@ const App: React.FC = () => {
             if (saveTimer) clearTimeout(saveTimer);
             saveTimer = setTimeout(() => {
               setScannedEntries(current => {
-                localStorage.setItem('geds_scanned_cache', JSON.stringify(current));
-                console.log('💾 Scanned entries cached to localStorage');
+                const success = safeSetLocalStorage('geds_scanned_cache', JSON.stringify(current));
+                if (success) {
+                  console.log('💾 Scanned entries cached to localStorage');
+                } else {
+                  console.warn('⚠️ Failed to cache scanned entries (quota exceeded)');
+                }
                 return current;
               });
             }, 1000); // 1 saniye bekle
@@ -564,7 +605,10 @@ const App: React.FC = () => {
             }
           });
           // Cache'i güncelle
-          localStorage.setItem('geds_scanned_cache', JSON.stringify(updated));
+          const success = safeSetLocalStorage('geds_scanned_cache', JSON.stringify(updated));
+          if (!success) {
+            console.warn('⚠️ Failed to cache passive event scanned entries (quota exceeded)');
+          }
           return updated;
         });
 
@@ -598,7 +642,10 @@ const App: React.FC = () => {
         const updated = { ...prev };
         updated[eventId] = entries;
         // Cache'i güncelle
-        localStorage.setItem('geds_scanned_cache', JSON.stringify(updated));
+        const success = safeSetLocalStorage('geds_scanned_cache', JSON.stringify(updated));
+        if (!success) {
+          console.warn('⚠️ Failed to cache older entries (quota exceeded)');
+        }
         return updated;
       });
 
