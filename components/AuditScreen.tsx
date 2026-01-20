@@ -417,23 +417,32 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
           continue;
         }
 
-        // Check for time overlap
+        // Check for time overlap using full timestamps (date + time)
         const currentStart = new Date(event.startDate).getTime();
         const currentEnd = new Date(event.endDate).getTime();
         const otherStart = new Date(otherEvent.startDate).getTime();
         const otherEnd = new Date(otherEvent.endDate).getTime();
 
-        const hasTimeOverlap = (currentStart <= otherEnd) && (currentEnd >= otherStart);
+        // Time overlap exists if: currentStart < otherEnd AND currentEnd > otherStart
+        const hasTimeOverlap = (currentStart < otherEnd) && (currentEnd > otherStart);
 
         // Only show conflict if:
         // 1. Other event is ACTIVE (regardless of time), OR
-        // 2. Events have overlapping time periods (regardless of status)
+        // 2. Events have overlapping time periods (including date + hours)
         if (otherEvent.status === 'ACTIVE') {
           conflictError = `Bu TC ${otherEvent.name} etkinliğinde okutuldu. O denetleme personeli ile iletişime geç.`;
           break;
         } else if (hasTimeOverlap) {
-          const startTime = new Date(otherEvent.startDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          const endTime = new Date(otherEvent.endDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const startTime = new Date(otherEvent.startDate).toLocaleString('tr-TR', {
+            day: '2-digit',
+            month: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+          const endTime = new Date(otherEvent.endDate).toLocaleTimeString('tr-TR', {
+            hour: '2-digit',
+            minute: '2-digit'
+          });
           conflictError = `Bu kimlik ${otherEvent.name} etkinliğinde ${startTime} - ${endTime} arasında çalışıyor, görev alamaz. O denetleme personeli ile iletişime geç.`;
           break;
         }
@@ -627,7 +636,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
             const otherStart = new Date(otherEvent.startDate).getTime();
             const otherEnd = new Date(otherEvent.endDate).getTime();
 
-            const hasTimeOverlap = (currentStart <= otherEnd) && (currentEnd >= otherStart);
+            const hasTimeOverlap = (currentStart < otherEnd) && (currentEnd > otherStart);
 
             // Only show conflict if:
             // 1. Other event is ACTIVE (regardless of time), OR
