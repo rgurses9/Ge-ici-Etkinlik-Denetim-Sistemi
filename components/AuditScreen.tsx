@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Citizen, Event, ScanEntry, User, UserRole, Company } from '../types';
 import { MOCK_CITIZEN_DB } from '../constants';
 import { AlertCircle, CheckCircle, Clock, Database, Download, Loader2, Trash2, Upload, User as UserIcon, X } from 'lucide-react';
+import { db } from '../firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 // --- Provided CSV Parsing Logic ---
 
@@ -173,7 +175,8 @@ function parseCSVRow(row: string): string[] {
 
 interface AuditScreenProps {
   event: Event;
-  allEvents: Event[]; // For cross checking
+  allEvents: Event[]; // For cross checking (ACTIVE events)
+  passiveEvents: Event[]; // For cross checking (PASSIVE events - lazy loaded)
   currentUser: User;
   onExit: (autoComplete?: { targetReached: boolean; startTime: number }) => void;
   onFinish: (duration: string) => void;
@@ -191,6 +194,7 @@ interface AuditScreenProps {
 const AuditScreen: React.FC<AuditScreenProps> = ({
   event,
   allEvents,
+  passiveEvents,
   currentUser,
   onExit,
   onFinish,
@@ -450,6 +454,66 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       }
     }
 
+    // Check PASSIVE events with overlapping time (Firebase query - not in memory)
+    // This is critical because passive events are lazy-loaded and may not be in allScannedEntries
+    if (!conflictError) {
+      const currentStart = new Date(event.startDate).getTime();
+      const currentEnd = new Date(event.endDate).getTime();
+
+      // Find PASSIVE events with overlapping time
+      const overlappingPassiveEvents = passiveEvents.filter(passiveEvent => {
+        const passiveStart = new Date(passiveEvent.startDate).getTime();
+        const passiveEnd = new Date(passiveEvent.endDate).getTime();
+        // Check time overlap
+        return (currentStart < passiveEnd) && (currentEnd > passiveStart);
+      });
+
+      if (overlappingPassiveEvents.length > 0) {
+        // Query Firebase for this TC in overlapping passive events
+        try {
+          const passiveEventIds = overlappingPassiveEvents.map(e => e.id);
+
+          // Firebase 'in' query has limit of 10, so batch if needed
+          const BATCH_SIZE = 10;
+          for (let i = 0; i < passiveEventIds.length; i += BATCH_SIZE) {
+            const batchIds = passiveEventIds.slice(i, i + BATCH_SIZE);
+
+            const q = query(
+              collection(db, 'scanned_entries'),
+              where('eventId', 'in', batchIds),
+              where('citizen.tc', '==', trimmedTC)
+            );
+
+            const snapshot = await getDocs(q);
+
+            if (!snapshot.empty) {
+              // Found a conflict in a PASSIVE event
+              const conflictEntry = snapshot.docs[0].data() as ScanEntry;
+              const conflictEvent = passiveEvents.find(e => e.id === conflictEntry.eventId);
+
+              if (conflictEvent) {
+                const startTime = new Date(conflictEvent.startDate).toLocaleString('tr-TR', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                });
+                const endTime = new Date(conflictEvent.endDate).toLocaleTimeString('tr-TR', {
+                  hour: '2-digit',
+                  minute: '2-digit'
+                });
+                conflictError = `Bu kimlik ${conflictEvent.name} etkinliğinde ${startTime} - ${endTime} arasında çalıştı, bu saatte başka görev alamaz.`;
+                break;
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error checking PASSIVE events:', error);
+          // Don't block the scan if Firebase query fails
+        }
+      }
+    }
+
     if (conflictError) {
       setLastScanResult({ status: 'ERROR', message: conflictError });
       setTcInput('');
@@ -534,7 +598,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     const XLSX = await import('xlsx');
     const reader = new FileReader();
 
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       const bstr = evt.target?.result;
       const wb = XLSX.read(bstr, { type: 'binary' });
       const wsname = wb.SheetNames[0];
@@ -649,6 +713,44 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
               break;
             }
             // If other event is PASSIVE and no time overlap, no conflict - continue checking
+          }
+        }
+
+        // 3.5. Check PASSIVE events with overlapping time (Firebase query)
+        if (!hasConflict) {
+          const currentStart = new Date(event.startDate).getTime();
+          const currentEnd = new Date(event.endDate).getTime();
+
+          const overlappingPassiveEvents = passiveEvents.filter(passiveEvent => {
+            const passiveStart = new Date(passiveEvent.startDate).getTime();
+            const passiveEnd = new Date(passiveEvent.endDate).getTime();
+            return (currentStart < passiveEnd) && (currentEnd > passiveStart);
+          });
+
+          if (overlappingPassiveEvents.length > 0) {
+            try {
+              const passiveEventIds = overlappingPassiveEvents.map(e => e.id);
+              const BATCH_SIZE = 10;
+
+              for (let i = 0; i < passiveEventIds.length; i += BATCH_SIZE) {
+                const batchIds = passiveEventIds.slice(i, i + BATCH_SIZE);
+
+                const q = query(
+                  collection(db, 'scanned_entries'),
+                  where('eventId', 'in', batchIds),
+                  where('citizen.tc', '==', tc)
+                );
+
+                const snapshot = await getDocs(q);
+
+                if (!snapshot.empty) {
+                  hasConflict = true;
+                  break;
+                }
+              }
+            } catch (error) {
+              console.error('Error checking PASSIVE events in Excel upload:', error);
+            }
           }
         }
 

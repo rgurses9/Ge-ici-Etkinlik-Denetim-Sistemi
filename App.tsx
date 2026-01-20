@@ -1151,6 +1151,7 @@ const App: React.FC = () => {
       <AuditScreen
         event={activeEvent}
         allEvents={events}
+        passiveEvents={passiveEvents}
         currentUser={session.currentUser}
         onExit={handleEndAudit}
         onFinish={handleFinishAndCloseAudit}
