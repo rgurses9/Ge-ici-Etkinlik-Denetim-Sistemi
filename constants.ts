@@ -15,7 +15,34 @@ export const MOCK_CITIZEN_DB: Citizen[] = [
 export const INITIAL_USERS: User[] = [
   { id: '1', username: 'admin', password: 'admin123', roles: [UserRole.ADMIN, UserRole.PERSONNEL], fullName: 'Yönetici' },
   { id: '2', username: '441288', password: '441288', roles: [UserRole.PERSONNEL], fullName: '441288' },
-  { id: '3', username: 'rgurses', password: 'rgurses9', roles: [UserRole.ADMIN, UserRole.PERSONNEL], fullName: 'Rıfat Gürses' },
 ];
 
-export const INITIAL_EVENTS: Event[] = [];
+export const INITIAL_EVENTS: Event[] = [
+  { 
+    id: 'e1', 
+    name: 'Galatasaray - Fenerbahçe', 
+    targetCount: 5, 
+    currentCount: 0, 
+    startDate: '2025-11-25T14:00', 
+    endDate: '2025-11-25T18:00', 
+    status: 'ACTIVE' 
+  },
+  { 
+    id: 'e2', 
+    name: 'Beşiktaş - Trabzonspor', 
+    targetCount: 4, 
+    currentCount: 0, 
+    startDate: '2025-11-25T14:00', 
+    endDate: '2025-11-25T23:00', 
+    status: 'ACTIVE' 
+  },
+  { 
+    id: 'e3', 
+    name: 'Başakşehir - Kayserispor', 
+    targetCount: 3, 
+    currentCount: 0, 
+    startDate: '2025-11-25T14:00', 
+    endDate: '2025-11-25T15:00', 
+    status: 'ACTIVE' 
+  },
+];

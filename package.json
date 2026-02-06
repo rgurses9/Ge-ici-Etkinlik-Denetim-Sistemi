@@ -1,22 +1,15 @@
 {
-  "$schema": "https://json.schemastore.org/package.json",
   "name": "gecici-etkinlik-denetim",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview",
-    "firebase:login": "firebase login",
-    "firebase:init": "firebase init",
-    "firebase:deploy": "firebase deploy",
-    "firebase:serve": "firebase serve",
-    "migrate:firebase": "node migrate-firebase-data.js"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@google/genai": "^1.30.0",
-    "@tanstack/react-query": "^5.90.12",
     "firebase": "^10.8.0",
     "lucide-react": "^0.330.0",
     "react": "^18.2.0",
@@ -28,11 +21,9 @@
     "@types/react-dom": "^18.2.19",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.17",
-    "firebase-tools": "^15.0.0",
     "postcss": "^8.4.35",
     "tailwindcss": "^3.4.1",
     "typescript": "^5.2.2",
-    "vite": "^5.1.0",
-    "vite-plugin-pwa": "^0.17.5"
+    "vite": "^5.1.0"
   }
 }

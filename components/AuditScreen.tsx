@@ -1,9 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Citizen, Event, ScanEntry, User, UserRole, Company } from '../types';
+import React, { useState, useRef, useEffect } from 'react';
+import { Event, Citizen, ScanEntry, User, UserRole } from '../types';
 import { MOCK_CITIZEN_DB } from '../constants';
-import { AlertCircle, CheckCircle, Clock, Database, Download, Loader2, Trash2, Upload, User as UserIcon, X } from 'lucide-react';
-import { db } from '../firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { Download, X, CheckCircle, AlertCircle, MessageSquare, Database, Loader2, Trash2, User as UserIcon, Clock, Upload } from 'lucide-react';
 
 // --- Provided CSV Parsing Logic ---
 
@@ -15,17 +13,15 @@ interface WorkerRecord {
 }
 
 // SECURITY: Retrieve IDs from environment variables.
-const SPREADSHEET_ID = (import.meta as any).env.VITE_SPREADSHEET_ID ?? '1FD25QgwnS8AvtlZc-ZWzbF0wKW-4kxRhQft0VkST8Ng';
-const GID = (import.meta as any).env.VITE_SHEET_GID ?? '893430437';
+const SPREADSHEET_ID = (import.meta as any).env.VITE_SPREADSHEET_ID || '1SU3otVPg8MVP77yfNdrIZ3Qlw5k7VoFg';
+const GID = (import.meta as any).env.VITE_SHEET_GID || '893430437';
 const CSV_EXPORT_URL = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${GID}`;
-
-// https://docs.google.com/spreadsheets/d/1FD25QgwnS8AvtlZc-ZWzbF0wKW-4kxRhQft0VkST8Ng/edit?gid=2114284548#gid=2114284548
 
 async function fetchSheetData(): Promise<WorkerRecord[]> {
   try {
     console.log('Fetching database from Google Sheets...');
     const response = await fetch(CSV_EXPORT_URL);
-
+    
     if (!response.ok) {
       console.error('Failed to fetch Google Sheet CSV:', response.statusText);
       return [];
@@ -66,7 +62,7 @@ function parseCSV(csvText: string): WorkerRecord[] {
   }
 
   const headers = parseCSVRow(rows[headerRowIndex]);
-
+  
   // Map columns based on headers
   const tcIndex = headers.findIndex(h => h.toUpperCase().includes('T.C.') || h.toUpperCase().includes('TC'));
   const nameIndex = headers.findIndex(h => h.toUpperCase().includes('ADI') && h.toUpperCase().includes('SOYADI'));
@@ -83,25 +79,21 @@ function parseCSV(csvText: string): WorkerRecord[] {
   // Parse data rows
   for (let i = headerRowIndex + 1; i < rows.length; i++) {
     const row = parseCSVRow(rows[i]);
-
+    
     // Skip empty or malformed rows
-    if (row.length <= tcIndex) {
-      continue;
-    }
+    if (row.length <= tcIndex) continue;
 
     const tc = row[tcIndex]?.trim();
-
+    
     // Basic TC validation (11 digits)
-    if (!tc || tc.length !== 11 || !/^\d+$/.test(tc)) {
-      continue;
-    }
+    if (!tc || tc.length !== 11 || !/^\d+$/.test(tc)) continue;
 
     const fullName = nameIndex > -1 ? row[nameIndex]?.trim() : '';
     const expiryDateStr = dateIndex > -1 ? row[dateIndex]?.trim() : '';
 
     // Calculate Status based on Date
     let status: 'active' | 'inactive' | 'expired' = 'inactive';
-
+    
     const expiryDateObj = parseDate(expiryDateStr);
 
     if (expiryDateObj) {
@@ -127,9 +119,7 @@ function parseCSV(csvText: string): WorkerRecord[] {
 
 // Helper to parse DD.MM.YYYY
 function parseDate(dateStr: string): Date | null {
-  if (!dateStr) {
-    return null;
-  }
+  if (!dateStr) return null;
   const parts = dateStr.trim().split('.');
   if (parts.length === 3) {
     const d = parseInt(parts[0], 10);
@@ -143,7 +133,7 @@ function parseDate(dateStr: string): Date | null {
   // Try YYYY-MM-DD fallback
   const fallback = new Date(dateStr);
   if (!isNaN(fallback.getTime())) {
-    return fallback;
+      return fallback;
   }
   return null;
 }
@@ -170,15 +160,13 @@ function parseCSVRow(row: string): string[] {
 }
 
 
-
 // --- Component ---
 
 interface AuditScreenProps {
   event: Event;
-  allEvents: Event[]; // For cross checking (ACTIVE events)
-  passiveEvents: Event[]; // For cross checking (PASSIVE events - lazy loaded)
+  allEvents: Event[]; // For cross checking
   currentUser: User;
-  onExit: (autoComplete?: { targetReached: boolean; startTime: number }) => void;
+  onExit: () => void;
   onFinish: (duration: string) => void;
   onScan: (entry: ScanEntry) => void; // This calls Firestore write
   onBulkScan: (entries: ScanEntry[]) => void;
@@ -187,26 +175,21 @@ interface AuditScreenProps {
   allScannedEntries: Record<string, ScanEntry[]>; // For cross checking
   onDatabaseUpdate: (freshDb: Citizen[]) => void;
   isDarkMode: boolean; // Add theme support
-  activeCompanyId?: string | null; // Seçili şirket ID'si
-  activeCompany?: Company; // Seçili şirket bilgisi
 }
 
-const AuditScreen: React.FC<AuditScreenProps> = ({
-  event,
+const AuditScreen: React.FC<AuditScreenProps> = ({ 
+  event, 
   allEvents,
-  passiveEvents,
-  currentUser,
-  onExit,
-  onFinish,
-  onScan,
+  currentUser, 
+  onExit, 
+  onFinish, 
+  onScan, 
   onBulkScan,
-  onDelete,
+  onDelete, 
   scannedList,
   allScannedEntries,
   onDatabaseUpdate,
-  isDarkMode,
-  activeCompanyId,
-  activeCompany
+  isDarkMode
 }) => {
   const [tcInput, setTcInput] = useState('');
   const [lastScanResult, setLastScanResult] = useState<{ status: 'SUCCESS' | 'ERROR' | 'WARNING' | 'IDLE', message: string, citizen?: Citizen }>({ status: 'IDLE', message: '' });
@@ -215,35 +198,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   const [startTime] = useState(Date.now());
   const [showSummary, setShowSummary] = useState(false);
   const [durationStr, setDurationStr] = useState('');
-
-  // Completion Warning State (Moved Inside)
-  const [showCompletionWarning, setShowCompletionWarning] = useState(false);
-  const prevTotalCountRef = useRef(0);
-
-  // Recently scanned TCs tracker (to prevent rapid duplicate scans)
-  const recentlyScannedTCs = useRef<Map<string, number>>(new Map());
-
-  useEffect(() => {
-    // Birden fazla şirket varsa, TÜM şirketlerin toplam hedefini kontrol et
-    if (event.companies && event.companies.length > 0) {
-      const totalTargetCount = event.companies.reduce((sum, company) => sum + company.targetCount, 0);
-      const allEventScans = allScannedEntries[event.id] || [];
-      const totalScannedCount = allEventScans.length;
-
-      if (totalScannedCount === totalTargetCount && totalScannedCount > prevTotalCountRef.current) {
-        setShowCompletionWarning(true);
-      }
-      prevTotalCountRef.current = totalScannedCount;
-    } else {
-      // Tek şirket veya şirket yok - mevcut şirketin hedefini kontrol et
-      const currentTargetCount = activeCompany ? activeCompany.targetCount : event.targetCount;
-      if (scannedList.length === currentTargetCount && scannedList.length > prevTotalCountRef.current) {
-        setShowCompletionWarning(true);
-      }
-      prevTotalCountRef.current = scannedList.length;
-    }
-  }, [scannedList.length, allScannedEntries, event.companies, event.targetCount, event.id, activeCompany]);
-
+  
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -257,35 +212,19 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   // Fetch from Google Sheets
   useEffect(() => {
     const loadData = async () => {
-      // 1. Önce cache'den yükle (hızlı)
-      const cachedData = localStorage.getItem('geds_workers_cache');
-      if (cachedData) {
-        try {
-          const cachedCitizens: Citizen[] = JSON.parse(cachedData);
-          const mergedDB = [...cachedCitizens, ...MOCK_CITIZEN_DB];
-          setDatabase(mergedDB);
-          setDbStatus('READY');
-          console.log('✅ Database loaded from cache:', cachedCitizens.length);
-        } catch (e) {
-          console.error('Cache parse error:', e);
-        }
-      } else {
-        setDbStatus('LOADING');
-      }
-
-      // 2. Arka planda Google Sheets'ten güncelle
+      setDbStatus('LOADING');
       try {
         const workerRecords = await fetchSheetData();
-
+        
         if (workerRecords.length > 0) {
           const onlineCitizens: Citizen[] = workerRecords.map(r => {
             const parts = r.fullName.trim().split(' ');
             let surname = '';
             let name = r.fullName;
-
+            
             if (parts.length > 1) {
-              surname = parts.pop() || '';
-              name = parts.join(' ');
+               surname = parts.pop() || '';
+               name = parts.join(' ');
             }
 
             return {
@@ -300,20 +239,12 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
           setDatabase(mergedDB);
           setDbStatus('READY');
           onDatabaseUpdate(onlineCitizens);
-
-          // Cache'e kaydet
-          localStorage.setItem('geds_workers_cache', JSON.stringify(onlineCitizens));
-          console.log('✅ Database updated from Google Sheets:', onlineCitizens.length);
         } else {
-          if (!cachedData) {
-            setDbStatus('READY');
-          }
+          setDbStatus('READY');
         }
       } catch (e) {
         console.error("DB Load Error", e);
-        if (!cachedData) {
-          setDbStatus('ERROR');
-        }
+        setDbStatus('ERROR');
       }
     };
 
@@ -323,195 +254,55 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   const performScan = async (tc: string) => {
     const trimmedTC = tc.trim();
 
-    if (!trimmedTC) {
-      return;
-    }
+    if (!trimmedTC) return;
 
     if (trimmedTC.length !== 11) {
       setLastScanResult({ status: 'ERROR', message: 'TC Kimlik Numarası 11 haneli olmalıdır.' });
       return;
     }
 
-    // MÜKERRER OKUMA KONTROLÜ - Recently scanned check (3 saniye cooldown)
-    const now = Date.now();
-    const lastScanTime = recentlyScannedTCs.current.get(trimmedTC);
-    const COOLDOWN_MS = 3000; // 3 saniye
-
-    if (lastScanTime && (now - lastScanTime) < COOLDOWN_MS) {
-      const remainingSeconds = Math.ceil((COOLDOWN_MS - (now - lastScanTime)) / 1000);
-      setLastScanResult({
-        status: 'ERROR',
-        message: `⚠️ MÜKERRER OKUMA HATASI! Bu kimlik ${remainingSeconds} saniye önce okutuldu. Lütfen bekleyin.`
-      });
-      setTcInput('');
-      return;
-    }
-
-    // İlk olarak, birden fazla şirket varsa TOPLAM etkinlik hedefini kontrol et
-    if (event.companies && event.companies.length > 0) {
-      const totalEventTarget = event.companies.reduce((sum, company) => sum + company.targetCount, 0);
-      const allEventScans = allScannedEntries[event.id] || [];
-      const totalEventCount = allEventScans.length;
-
-      if (totalEventCount >= totalEventTarget) {
-        setLastScanResult({
-          status: 'ERROR',
-          message: `Etkinliğin toplam hedef kişi sayısına ulaşıldı (${totalEventCount}/${totalEventTarget}). Daha fazla kayıt yapılamaz.`
-        });
+    if (scannedList.length >= event.targetCount) {
+        setLastScanResult({ status: 'ERROR', message: 'Hedef kişi sayısına ulaşıldı. Daha fazla kayıt yapılamaz. Denetlemeyi bitir' });
         setTcInput('');
         return;
-      }
     }
 
-    // Şirket varsa o şirketin hedefini kontrol et, yoksa event'in hedefini kontrol et
-    const currentTargetCount = activeCompany ? activeCompany.targetCount : event.targetCount;
-
-    // Hedef sayıya ulaşıldıysa yeni kayıt yapılmasını engelle
-    if (scannedList.length >= currentTargetCount) {
-      const message = activeCompany
-        ? `${activeCompany.name} şirketi için hedef kişi sayısına ulaşıldı (${scannedList.length}/${currentTargetCount}). Daha fazla kayıt yapılamaz.`
-        : `Hedef kişi sayısına ulaşıldı (${scannedList.length}/${currentTargetCount}). Daha fazla kayıt yapılamaz. Denetlemeyi bitir`;
-      setLastScanResult({ status: 'ERROR', message });
-      setTcInput('');
-      return;
-    }
-
-    // Check existing in current company's list
+    // Check existing in list
     const alreadyScanned = scannedList.find(s => s.citizen.tc === trimmedTC);
     if (alreadyScanned) {
-      setLastScanResult({ status: 'ERROR', message: '⚠️ MÜKERRER OKUMA HATASI! Bu TC kimlik numarası daha önce okutuldu.' });
+      setLastScanResult({ status: 'ERROR', message: 'Bu kişi zaten listeye eklendi.' });
       setTcInput('');
       return;
-    }
-
-    // Check if TC exists in a different company within the same event
-    if (activeCompanyId && event.companies && event.companies.length > 0) {
-      const allEventScans = allScannedEntries[event.id] || [];
-      const otherCompanyScan = allEventScans.find(
-        entry => entry.citizen.tc === trimmedTC && entry.companyId && entry.companyId !== activeCompanyId
-      );
-
-      if (otherCompanyScan) {
-        const otherCompany = event.companies.find(c => c.id === otherCompanyScan.companyId);
-        const companyName = otherCompany ? otherCompany.name : 'başka bir şirket';
-        setLastScanResult({
-          status: 'ERROR',
-          message: `Bu TC ${companyName} listesinde kayıtlı. Aynı kişi farklı şirketlerde çalışamaz.`
-        });
-        setTcInput('');
-        return;
-      }
     }
 
     // Cross-Event Validation
     let conflictError = '';
-
+    
     // Convert Record<string, ScanEntry[]> to array of ScanEntry for checking
     const allEntriesFlat = Object.values(allScannedEntries).flat() as ScanEntry[];
 
     for (const foundEntry of allEntriesFlat) {
-      if (foundEntry.citizen.tc === trimmedTC) {
-        const otherEvent = allEvents.find(e => e.id === foundEntry.eventId);
-        if (!otherEvent) {
-          continue;
-        }
+       if (foundEntry.citizen.tc === trimmedTC) {
+         const otherEvent = allEvents.find(e => e.id === foundEntry.eventId);
+         if (!otherEvent) continue;
 
-        // Skip if it's the same event
-        if (otherEvent.id === event.id) {
-          continue;
-        }
+         if (otherEvent.status === 'ACTIVE' && otherEvent.id !== event.id) {
+           conflictError = `Bu TC ${otherEvent.name} etkinliğinde okutuldu. O denetleme personeli ile iletişime geç.`;
+           break;
+         }
 
-        // Check for time overlap using full timestamps (date + time)
-        const currentStart = new Date(event.startDate).getTime();
-        const currentEnd = new Date(event.endDate).getTime();
-        const otherStart = new Date(otherEvent.startDate).getTime();
-        const otherEnd = new Date(otherEvent.endDate).getTime();
+         const currentStart = new Date(event.startDate).getTime();
+         const currentEnd = new Date(event.endDate).getTime();
+         const otherStart = new Date(otherEvent.startDate).getTime();
+         const otherEnd = new Date(otherEvent.endDate).getTime();
 
-        // Time overlap exists if: currentStart < otherEnd AND currentEnd > otherStart
-        const hasTimeOverlap = (currentStart < otherEnd) && (currentEnd > otherStart);
-
-        // Only show conflict if:
-        // 1. Other event is ACTIVE (regardless of time), OR
-        // 2. Events have overlapping time periods (including date + hours)
-        if (otherEvent.status === 'ACTIVE') {
-          conflictError = `Bu TC ${otherEvent.name} etkinliğinde okutuldu. O denetleme personeli ile iletişime geç.`;
-          break;
-        } else if (hasTimeOverlap) {
-          const startTime = new Date(otherEvent.startDate).toLocaleString('tr-TR', {
-            day: '2-digit',
-            month: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit'
-          });
-          const endTime = new Date(otherEvent.endDate).toLocaleTimeString('tr-TR', {
-            hour: '2-digit',
-            minute: '2-digit'
-          });
-          conflictError = `Bu kimlik ${otherEvent.name} etkinliğinde ${startTime} - ${endTime} arasında çalışıyor, görev alamaz. O denetleme personeli ile iletişime geç.`;
-          break;
-        }
-        // If other event is PASSIVE and no time overlap, no conflict - continue checking
-      }
-    }
-
-    // Check PASSIVE events with overlapping time (Firebase query - not in memory)
-    // This is critical because passive events are lazy-loaded and may not be in allScannedEntries
-    if (!conflictError) {
-      const currentStart = new Date(event.startDate).getTime();
-      const currentEnd = new Date(event.endDate).getTime();
-
-      // Find PASSIVE events with overlapping time
-      const overlappingPassiveEvents = passiveEvents.filter(passiveEvent => {
-        const passiveStart = new Date(passiveEvent.startDate).getTime();
-        const passiveEnd = new Date(passiveEvent.endDate).getTime();
-        // Check time overlap
-        return (currentStart < passiveEnd) && (currentEnd > passiveStart);
-      });
-
-      if (overlappingPassiveEvents.length > 0) {
-        // Query Firebase for this TC in overlapping passive events
-        try {
-          const passiveEventIds = overlappingPassiveEvents.map(e => e.id);
-
-          // Firebase 'in' query has limit of 10, so batch if needed
-          const BATCH_SIZE = 10;
-          for (let i = 0; i < passiveEventIds.length; i += BATCH_SIZE) {
-            const batchIds = passiveEventIds.slice(i, i + BATCH_SIZE);
-
-            const q = query(
-              collection(db, 'scanned_entries'),
-              where('eventId', 'in', batchIds),
-              where('citizen.tc', '==', trimmedTC)
-            );
-
-            const snapshot = await getDocs(q);
-
-            if (!snapshot.empty) {
-              // Found a conflict in a PASSIVE event
-              const conflictEntry = snapshot.docs[0].data() as ScanEntry;
-              const conflictEvent = passiveEvents.find(e => e.id === conflictEntry.eventId);
-
-              if (conflictEvent) {
-                const startTime = new Date(conflictEvent.startDate).toLocaleString('tr-TR', {
-                  day: '2-digit',
-                  month: '2-digit',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                });
-                const endTime = new Date(conflictEvent.endDate).toLocaleTimeString('tr-TR', {
-                  hour: '2-digit',
-                  minute: '2-digit'
-                });
-                conflictError = `Bu kimlik ${conflictEvent.name} etkinliğinde ${startTime} - ${endTime} arasında çalıştı, bu saatte başka görev alamaz.`;
-                break;
-              }
-            }
-          }
-        } catch (error) {
-          console.error('Error checking PASSIVE events:', error);
-          // Don't block the scan if Firebase query fails
-        }
-      }
+         if ((currentStart <= otherEnd) && (currentEnd >= otherStart)) {
+           const startTime = new Date(otherEvent.startDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+           const endTime = new Date(otherEvent.endDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+           conflictError = `Bu kimlik ${otherEvent.name} etkinliğinde ${startTime} - ${endTime} arasında çalışıyor, görev alamaz. O denetleme personeli ile iletişime geç.`;
+           break;
+         }
+       }
     }
 
     if (conflictError) {
@@ -526,27 +317,17 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     let status: 'SUCCESS' | 'WARNING' = 'SUCCESS';
 
     if (citizen) {
-      const workStatus = checkWorkStatus(citizen.validityDate);
-      if (workStatus.text === 'ÇALIŞAMAZ') {
-        setLastScanResult({
-          status: 'ERROR',
-          message: 'Kimlik kartının süresi geçmiş özel güvenlik görevlisi bu etkinlikte çalışamaz',
-          citizen
-        });
-        setTcInput('');
-        return;
-      }
-      message = 'Kayıt başarı ile gerçekleştirildi';
-      status = 'SUCCESS';
+       message = 'Kayıt başarı ile gerçekleştirildi';
+       status = 'SUCCESS';
     } else {
-      citizen = {
-        tc: trimmedTC,
-        name: 'Veri Tabanında',
-        surname: 'Bulunamadı',
-        validityDate: '-'
-      };
-      message = 'Kimlik kartının geçerlilik süresini kontrol et';
-      status = 'WARNING';
+       citizen = {
+         tc: trimmedTC,
+         name: 'Veri Tabanında',
+         surname: 'Bulunamadı',
+         validityDate: '-' 
+       };
+       message = 'Kimlik kartının geçerlilik süresini kontrol et';
+       status = 'WARNING'; 
     }
 
     const newEntry: ScanEntry = {
@@ -554,18 +335,9 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       eventId: event.id,
       citizen: citizen,
       timestamp: new Date().toLocaleTimeString(),
-      recordedBy: currentUser.username,
-      ...(activeCompanyId && { companyId: activeCompanyId })
+      recordedBy: currentUser.username
     };
-
-    // Track this TC as recently scanned
-    recentlyScannedTCs.current.set(trimmedTC, Date.now());
-
-    // Auto-remove from tracker after cooldown period
-    setTimeout(() => {
-      recentlyScannedTCs.current.delete(trimmedTC);
-    }, 3000); // 3 saniye sonra temizle
-
+    
     // Fire and forget (Optimistic UI handled by Firestore listener in App.tsx)
     onScan(newEntry);
     setLastScanResult({ status: status, message: message, citizen });
@@ -581,7 +353,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value.replace(/\D/g, '');
     setTcInput(val);
-
+    
     if (val.length === 11) {
       performScan(val);
     }
@@ -589,16 +361,14 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) {
-      return;
-    }
+    if (!file) return;
 
     e.target.value = '';
 
     const XLSX = await import('xlsx');
     const reader = new FileReader();
 
-    reader.onload = async (evt) => {
+    reader.onload = (evt) => {
       const bstr = evt.target?.result;
       const wb = XLSX.read(bstr, { type: 'binary' });
       const wsname = wb.SheetNames[0];
@@ -609,49 +379,24 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       let successCount = 0;
       let failCount = 0;
       let errorMsg = '';
-
+      
       const currentTimestamp = new Date().toLocaleTimeString();
       let currentScannedCount = scannedList.length;
 
       // Flatten data to get just TCs from first available column
       for (let i = 0; i < data.length; i++) {
         const row = data[i];
-        if (row.length === 0) {
-          continue;
-        }
-
+        if (row.length === 0) continue;
+        
         const tcVal = row.find(cell => cell !== undefined && cell !== null && cell !== '');
-        if (!tcVal) {
-          continue;
-        }
-
+        if (!tcVal) continue;
+        
         const tc = String(tcVal).trim().replace(/\D/g, '');
 
-        if (tc.length !== 11) {
-          continue;
-        }
+        if (tc.length !== 11) continue;
 
-        // İlk olarak, birden fazla şirket varsa TOPLAM etkinlik hedefini kontrol et
-        if (event.companies && event.companies.length > 0) {
-          const totalEventTarget = event.companies.reduce((sum, company) => sum + company.targetCount, 0);
-          const allEventScans = allScannedEntries[event.id] || [];
-          const totalEventCount = allEventScans.length + newEntries.length;
-
-          if (totalEventCount >= totalEventTarget) {
-            errorMsg = `Etkinliğin toplam hedef kişi sayısına ulaşıldı (${totalEventCount}/${totalEventTarget}).`;
-            break;
-          }
-        }
-
-        // Şirket varsa o şirketin hedefini kontrol et, yoksa event'in hedefini kontrol et
-        const currentTargetCount = activeCompany ? activeCompany.targetCount : event.targetCount;
-
-        // Hedef sayıya ulaşıldıysa yeni kayıt yapılmasını engelle
-        if (currentScannedCount + newEntries.length >= currentTargetCount) {
-          const currentTotal = currentScannedCount + newEntries.length;
-          errorMsg = activeCompany
-            ? `${activeCompany.name} şirketi için hedef limite ulaşıldı (${currentTotal}/${currentTargetCount}).`
-            : `Hedef limite ulaşıldı (${currentTotal}/${currentTargetCount}).`;
+        if (currentScannedCount + newEntries.length >= event.targetCount) {
+          errorMsg = 'Hedef limite ulaşıldı.';
           break;
         }
 
@@ -663,95 +408,30 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
         // 2. Duplicate in Batch
         if (newEntries.find(s => s.citizen.tc === tc)) {
-          continue;
-        }
-
-        // 2.5. Check if TC exists in a different company within the same event
-        if (activeCompanyId && event.companies && event.companies.length > 0) {
-          const allEventScans = allScannedEntries[event.id] || [];
-          const otherCompanyScan = allEventScans.find(
-            entry => entry.citizen.tc === tc && entry.companyId && entry.companyId !== activeCompanyId
-          );
-
-          if (otherCompanyScan) {
-            failCount++;
-            continue;
-          }
+           continue;
         }
 
         // 3. Cross-Event Conflict
         let hasConflict = false;
         const allEntriesFlat = Object.values(allScannedEntries).flat() as ScanEntry[];
         for (const foundEntry of allEntriesFlat) {
-          if (foundEntry.citizen.tc === tc) {
-            const otherEvent = allEvents.find(e => e.id === foundEntry.eventId);
-            if (!otherEvent) {
-              continue;
-            }
+            if (foundEntry.citizen.tc === tc) {
+              const otherEvent = allEvents.find(e => e.id === foundEntry.eventId);
+              if (!otherEvent) continue;
 
-            // Skip if it's the same event
-            if (otherEvent.id === event.id) {
-              continue;
-            }
-
-            // Check for time overlap
-            const currentStart = new Date(event.startDate).getTime();
-            const currentEnd = new Date(event.endDate).getTime();
-            const otherStart = new Date(otherEvent.startDate).getTime();
-            const otherEnd = new Date(otherEvent.endDate).getTime();
-
-            const hasTimeOverlap = (currentStart < otherEnd) && (currentEnd > otherStart);
-
-            // Only show conflict if:
-            // 1. Other event is ACTIVE (regardless of time), OR
-            // 2. Events have overlapping time periods (regardless of status)
-            if (otherEvent.status === 'ACTIVE') {
-              hasConflict = true;
-              break;
-            } else if (hasTimeOverlap) {
-              hasConflict = true;
-              break;
-            }
-            // If other event is PASSIVE and no time overlap, no conflict - continue checking
-          }
-        }
-
-        // 3.5. Check PASSIVE events with overlapping time (Firebase query)
-        if (!hasConflict) {
-          const currentStart = new Date(event.startDate).getTime();
-          const currentEnd = new Date(event.endDate).getTime();
-
-          const overlappingPassiveEvents = passiveEvents.filter(passiveEvent => {
-            const passiveStart = new Date(passiveEvent.startDate).getTime();
-            const passiveEnd = new Date(passiveEvent.endDate).getTime();
-            return (currentStart < passiveEnd) && (currentEnd > passiveStart);
-          });
-
-          if (overlappingPassiveEvents.length > 0) {
-            try {
-              const passiveEventIds = overlappingPassiveEvents.map(e => e.id);
-              const BATCH_SIZE = 10;
-
-              for (let i = 0; i < passiveEventIds.length; i += BATCH_SIZE) {
-                const batchIds = passiveEventIds.slice(i, i + BATCH_SIZE);
-
-                const q = query(
-                  collection(db, 'scanned_entries'),
-                  where('eventId', 'in', batchIds),
-                  where('citizen.tc', '==', tc)
-                );
-
-                const snapshot = await getDocs(q);
-
-                if (!snapshot.empty) {
-                  hasConflict = true;
-                  break;
-                }
+              if (otherEvent.status === 'ACTIVE' && otherEvent.id !== event.id) {
+                hasConflict = true; break;
               }
-            } catch (error) {
-              console.error('Error checking PASSIVE events in Excel upload:', error);
+
+              const currentStart = new Date(event.startDate).getTime();
+              const currentEnd = new Date(event.endDate).getTime();
+              const otherStart = new Date(otherEvent.startDate).getTime();
+              const otherEnd = new Date(otherEvent.endDate).getTime();
+
+              if ((currentStart <= otherEnd) && (currentEnd >= otherStart)) {
+                hasConflict = true; break;
+              }
             }
-          }
         }
 
         if (hasConflict) {
@@ -766,7 +446,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
             tc: tc,
             name: 'Veri Tabanında',
             surname: 'Bulunamadı',
-            validityDate: '-'
+            validityDate: '-' 
           };
         }
 
@@ -775,10 +455,9 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
           eventId: event.id,
           citizen: citizen,
           timestamp: currentTimestamp,
-          recordedBy: currentUser.username,
-          ...(activeCompanyId && { companyId: activeCompanyId })
+          recordedBy: currentUser.username
         });
-
+        
         successCount++;
       }
 
@@ -789,7 +468,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
           message: `${newEntries.length} kişi eklendi. ${failCount} kişi hatalı/çakışan veya mükerrer. ${errorMsg}`
         });
       } else {
-        setLastScanResult({
+         setLastScanResult({
           status: 'ERROR',
           message: `Kayıt eklenemedi. ${failCount} hata. ${errorMsg}`
         });
@@ -800,46 +479,20 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
   const exportToExcel = async () => {
     const XLSX = await import('xlsx');
-
-    // Eğer birden fazla şirket varsa, TÜM şirketlerin verilerini al
-    let dataToExport;
-
-    if (event.companies && event.companies.length > 0) {
-      // Birden fazla şirket var - TÜM etkinlik kayıtlarını al
-      const allEventScans = allScannedEntries[event.id] || [];
-
-      dataToExport = allEventScans.map(item => {
-        const status = checkWorkStatus(item.citizen.validityDate);
-        const company = event.companies?.find(c => c.id === item.companyId);
-
-        return {
-          "TC Kimlik No": item.citizen.tc,
-          "Ad": item.citizen.name,
-          "Soyad": item.citizen.surname,
-          "Geçerlilik Tarihi": item.citizen.validityDate,
-          "Durum": status.text,
-          "Okutma Saati": item.timestamp,
-          "Kaydeden": item.recordedBy,
-          "Etkinlik": event.name,
-          "Şirket": company ? company.name : 'Belirtilmemiş'
-        };
-      });
-    } else {
-      // Tek şirket - sadece mevcut listeyi al
-      dataToExport = scannedList.map(item => {
-        const status = checkWorkStatus(item.citizen.validityDate);
-        return {
-          "TC Kimlik No": item.citizen.tc,
-          "Ad": item.citizen.name,
-          "Soyad": item.citizen.surname,
-          "Geçerlilik Tarihi": item.citizen.validityDate,
-          "Durum": status.text,
-          "Okutma Saati": item.timestamp,
-          "Kaydeden": item.recordedBy,
-          "Etkinlik": event.name
-        };
-      });
-    }
+    
+    const dataToExport = scannedList.map(item => {
+      const status = checkWorkStatus(item.citizen.validityDate);
+      return {
+        "TC Kimlik No": item.citizen.tc,
+        "Ad": item.citizen.name,
+        "Soyad": item.citizen.surname,
+        "Geçerlilik Tarihi": item.citizen.validityDate,
+        "Durum": status.text,
+        "Okutma Saati": item.timestamp,
+        "Kaydeden": item.recordedBy,
+        "Etkinlik": event.name
+      };
+    });
 
     const ws = XLSX.utils.json_to_sheet(dataToExport);
     const wb = XLSX.utils.book_new();
@@ -856,9 +509,9 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     const seconds = Math.floor((diff % 60000) / 1000);
 
     const formattedDuration = [
-      hours.toString().padStart(2, '0'),
-      minutes.toString().padStart(2, '0'),
-      seconds.toString().padStart(2, '0')
+        hours.toString().padStart(2, '0'),
+        minutes.toString().padStart(2, '0'),
+        seconds.toString().padStart(2, '0')
     ].join(':');
 
     setDurationStr(formattedDuration);
@@ -872,7 +525,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
     let targetDate: Date | null = null;
     if (dateStr.includes('-') && dateStr.length === 10) {
-      targetDate = new Date(dateStr);
+       targetDate = new Date(dateStr);
     } else if (dateStr.includes('.')) {
       const parts = dateStr.split('.');
       if (parts.length === 3) {
@@ -881,7 +534,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     }
 
     if (!targetDate || isNaN(targetDate.getTime())) {
-      return { text: 'TARİH HATALI', color: 'text-gray-500', bg: 'bg-gray-100 dark:bg-gray-700 dark:text-gray-400' };
+       return { text: 'TARİH HATALI', color: 'text-gray-500', bg: 'bg-gray-100 dark:bg-gray-700 dark:text-gray-400' };
     }
 
     const today = new Date();
@@ -894,55 +547,38 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     }
   };
 
-  // Şirket varsa o şirketin hedefine göre, yoksa event'in hedefine göre hesapla
-  const targetCount = activeCompany ? activeCompany.targetCount : event.targetCount;
-  const progressPercentage = Math.min(100, Math.round((scannedList.length / targetCount) * 100));
-
-  // "Denetimi Bitir" butonu için kontrol:
-  // - Eğer etkinlikte birden fazla şirket varsa, TÜM şirketlerin toplam hedefine ulaşılmalı
-  // - Eğer tek şirket veya şirket yoksa, o şirketin/event'in hedefine ulaşılmalı
-  let isTargetReached = false;
-  if (event.companies && event.companies.length > 0) {
-    // Birden fazla şirket var - TÜM şirketlerin toplam hedefini kontrol et
-    const totalTargetCount = event.companies.reduce((sum, company) => sum + company.targetCount, 0);
-    const allEventScans = allScannedEntries[event.id] || [];
-    const totalScannedCount = allEventScans.length;
-    isTargetReached = totalScannedCount >= totalTargetCount;
-  } else {
-    // Tek şirket veya şirket yok - mevcut hedefi kontrol et
-    isTargetReached = scannedList.length >= targetCount;
-  }
-
-  const currentUserScanCount = scannedList.filter(s => s.recordedBy === currentUser.username).length;
+  const progressPercentage = Math.min(100, Math.round((scannedList.length / event.targetCount) * 100));
+  const isTargetReached = scannedList.length >= event.targetCount;
 
   if (showSummary) {
-    return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-        <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-sm p-5 shadow-2xl text-center">
-          <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center mx-auto mb-3">
-            <CheckCircle size={24} />
-          </div>
-          <h2 className="text-base font-bold text-gray-900 dark:text-white mb-2">Denetleme Tamamlandı</h2>
-          <p className="text-[10px] text-gray-500 dark:text-gray-400 mb-4">Etkinlik denetimi başarıyla sonlandırıldı ve Excel dosyası indirildi.</p>
+      return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl text-center">
+                  <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <CheckCircle size={32} />
+                  </div>
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Denetleme Tamamlandı</h2>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-6">Etkinlik denetimi başarıyla sonlandırıldı ve Excel dosyası indirildi.</p>
+                  
+                  <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 mb-6">
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 flex items-center justify-center gap-1">
+                          <Clock size={12} />
+                          Tamamlama Süresi
+                      </div>
+                      <div className="text-2xl font-mono font-bold text-gray-800 dark:text-white">
+                          {durationStr}
+                      </div>
+                  </div>
 
-          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-2.5 mb-4">
-            <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 flex items-center justify-center gap-1">
-              <Clock size={10} />
-              Tamamlama Süresi
-            </div>
-            <div className="text-xl font-mono font-bold text-gray-800 dark:text-white">
-              {durationStr}
-            </div>
+                  <button 
+                      onClick={() => onFinish(durationStr)}
+                      className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-2.5 px-6 rounded-xl transition text-sm"
+                  >
+                      Ana Ekrana Dön
+                  </button>
+              </div>
           </div>
-
-          <button
-            onClick={() => onFinish(durationStr)} className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-2 px-4 rounded-lg transition text-xs"
-          >
-            Ana Ekrana Dön
-          </button>
-        </div>
-      </div>
-    )
+      )
   }
 
   return (
@@ -951,95 +587,78 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       <div className="bg-white dark:bg-gray-800 px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center sticky top-0 z-10">
         <div>
           <h1 className="text-base font-bold text-gray-900 dark:text-white truncate max-w-xs sm:max-w-lg">{event.name}</h1>
-          {activeCompany && (
-            <div className="flex items-center gap-1.5 mt-1">
-              <span className="bg-secondary-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
-                {activeCompany.name}
-              </span>
-              <span className="text-[10px] text-gray-500 dark:text-gray-400">
-                Hedef: {activeCompany.targetCount}
-              </span>
-            </div>
-          )}
           <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
-              {dbStatus === 'LOADING' && <><Loader2 size={10} className="animate-spin" /> Veritabanı Yükleniyor...</>}
-              {dbStatus === 'READY' && <><CheckCircle size={10} className="text-green-500 dark:text-green-400" /> Veritabanı Güncel</>}
-              {dbStatus === 'ERROR' && <><Database size={10} className="text-orange-500 dark:text-orange-400" /> Çevrimdışı Mod (Mock)</>}
-            </span>
+             <span className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                {dbStatus === 'LOADING' && <><Loader2 size={10} className="animate-spin"/> Veritabanı Yükleniyor...</>}
+                {dbStatus === 'READY' && <><CheckCircle size={10} className="text-green-500 dark:text-green-400"/> Veritabanı Güncel</>}
+                {dbStatus === 'ERROR' && <><Database size={10} className="text-orange-500 dark:text-orange-400"/> Çevrimdışı Mod (Mock)</>}
+             </span>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <div className="hidden sm:flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-2.5 py-1 rounded-full">
-            <UserIcon size={12} />
-            {currentUser.username}
-          </div>
-          <button
-            onClick={() => {
-              // Birden fazla şirket varsa, TÜM şirketlerin toplam hedefini kontrol et
-              let shouldAutoComplete = false;
-              if (event.companies && event.companies.length > 0) {
-                const totalTargetCount = event.companies.reduce((sum, company) => sum + company.targetCount, 0);
-                const allEventScans = allScannedEntries[event.id] || [];
-                shouldAutoComplete = allEventScans.length >= totalTargetCount;
-              } else {
-                const currentTargetCount = activeCompany ? activeCompany.targetCount : event.targetCount;
-                shouldAutoComplete = scannedList.length >= currentTargetCount;
-              }
-
-              onExit(shouldAutoComplete ? { targetReached: true, startTime } : undefined);
-            }}
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-          >
-            <X size={20} />
-          </button>
+           <div className="hidden sm:flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-2.5 py-1 rounded-full">
+             <UserIcon size={12} />
+             {currentUser.username}
+           </div>
+           <button onClick={onExit} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+             <X size={20} />
+           </button>
         </div>
       </div>
 
       {/* Progress Bar */}
       <div className="bg-gray-100 dark:bg-gray-800 px-4 py-1.5 border-b border-gray-200 dark:border-gray-700">
-        <div className="flex justify-between text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mb-1">
-          <span>İlerleme</span>
-          <div className="flex gap-2">
-            <span>Senin Okuttuğun: <span className="font-bold text-gray-700 dark:text-gray-300">{currentUserScanCount}</span></span>
-            <span>•</span>
-            <span>{scannedList.length} / {targetCount} (%{progressPercentage})</span>
-          </div>
-        </div>
-        <div className="w-full bg-gray-300 dark:bg-gray-600 rounded-full h-2 overflow-hidden">
-          <div
-            className="bg-blue-600 h-2 rounded-full transition-all duration-500" style={{ width: `${progressPercentage}%` }}
-          ></div>
-        </div>
+         <div className="flex justify-between text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mb-1">
+            <span>İlerleme</span>
+            <span>{scannedList.length} / {event.targetCount} (%{progressPercentage})</span>
+         </div>
+         <div className="w-full bg-gray-300 dark:bg-gray-600 rounded-full h-2 overflow-hidden">
+            <div 
+              className="bg-blue-600 h-2 rounded-full transition-all duration-500" 
+              style={{ width: `${progressPercentage}%` }}
+            ></div>
+         </div>
       </div>
 
       <div className="flex-1 max-w-4xl mx-auto w-full p-4 flex flex-col items-center">
-
+        
         {/* Scanner Area */}
         <div className="w-full bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-5 mb-4">
           <div className="flex flex-col items-center">
             <h2 className="text-sm font-medium text-gray-900 dark:text-white mb-4">TC Kimlik Numarası Girin</h2>
-
+            
             <form onSubmit={handleManualScan} className="flex w-full max-w-lg gap-2">
               <input
-                ref={inputRef} type="text" maxLength={11} value={tcInput} onChange={handleInputChange}
+                ref={inputRef}
+                type="text"
+                maxLength={11}
+                value={tcInput}
+                onChange={handleInputChange}
                 className="flex-1 bg-gray-700 dark:bg-gray-700 text-white text-sm sm:text-base font-mono placeholder-gray-400 border-none rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
-                style={{ backgroundColor: '#374151' }} placeholder="11 haneli TC No"
+                style={{ backgroundColor: '#374151' }}
+                placeholder="11 haneli TC No"
               />
-              <button
-                type="submit" className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-4 py-2 text-sm rounded-lg transition"
+              <button 
+                type="submit"
+                className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-4 py-2 text-sm rounded-lg transition"
               >
                 Okut
               </button>
-
+              
               {isAdmin && (
                 <>
-                  <input
-                    type="file" ref={fileInputRef} hidden accept=".xlsx, .xls, .csv" onChange={handleFileUpload}
+                  <input 
+                     type="file" 
+                     ref={fileInputRef}
+                     hidden 
+                     accept=".xlsx, .xls, .csv" 
+                     onChange={handleFileUpload} 
                   />
                   <button
-                    type="button" onClick={() => fileInputRef.current?.click()}
-                    className="bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2 text-sm rounded-lg transition flex items-center gap-1.5" title="Excel Listesi Yükle"
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2 text-sm rounded-lg transition flex items-center gap-1.5"
+                    title="Excel Listesi Yükle"
                   >
                     <Upload size={16} /> Excel Yükle
                   </button>
@@ -1049,19 +668,18 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
             {/* Status Message */}
             {lastScanResult.status !== 'IDLE' && (
-              <div
-                className={`mt-3 flex items-center gap-2 px-3 py-2 rounded-lg w-full max-w-lg ${lastScanResult.status === 'SUCCESS'
-                  ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800'
+              <div className={`mt-3 flex items-center gap-2 px-3 py-2 rounded-lg w-full max-w-lg ${
+                lastScanResult.status === 'SUCCESS' 
+                  ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800' 
                   : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800'
-                  }`}
-              >
+              }`}>
                 {lastScanResult.status === 'SUCCESS' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
                 <div className="flex-1">
                   <p className="text-xs font-bold">{lastScanResult.message}</p>
                   {lastScanResult.citizen && (
                     <div className="text-xs opacity-90 mt-0.5">
-                      <p>{lastScanResult.citizen.name} {lastScanResult.citizen.surname}</p>
-                      <p className="mt-0.5 text-gray-600 dark:text-gray-300 scale-90 origin-left">Geçerlilik Tarihi: {lastScanResult.citizen.validityDate}</p>
+                       <p>{lastScanResult.citizen.name} {lastScanResult.citizen.surname}</p>
+                       <p className="font-mono mt-0.5 text-gray-600 dark:text-gray-300 scale-90 origin-left">Geçerlilik Tarihi: {lastScanResult.citizen.validityDate}</p>
                     </div>
                   )}
                 </div>
@@ -1074,26 +692,21 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
         <div className="w-full flex justify-between items-center mb-2">
           <h3 className="font-bold text-gray-800 dark:text-gray-200 text-sm">Okutulan Kişiler</h3>
           <div className="flex gap-2">
-            <button
-              onClick={exportToExcel} disabled={scannedList.length === 0}
+            <button 
+              onClick={exportToExcel}
+              disabled={scannedList.length === 0}
               className="flex items-center gap-1.5 bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Download size={14} /> Excel'e Aktar
             </button>
-            {!isTargetReached && scannedList.length > 0 && (
-              <button
-                onClick={handleFinishAudit}
-                className="flex items-center gap-1.5 bg-orange-600 hover:bg-orange-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition"
-                title={`Mevcut ${scannedList.length} kişi ile denetimi bitir`}
-              >
-                <AlertCircle size={14} /> Eksik Personel ile Bitir
-              </button>
-            )}
-            <button
-              onClick={handleFinishAudit} disabled={!isTargetReached} className={`text-white px-3 py-1.5 rounded-lg text-xs font-medium transition ${isTargetReached
-                ? 'bg-red-600 hover:bg-red-700'
-                : 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed opacity-70'
-                }`}
+            <button 
+              onClick={handleFinishAudit}
+              disabled={!isTargetReached}
+              className={`text-white px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                isTargetReached 
+                  ? 'bg-red-600 hover:bg-red-700' 
+                  : 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed opacity-70'
+              }`}
             >
               Denetimi Bitir
             </button>
@@ -1122,17 +735,17 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
                   return (
                     <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                       <td className="px-3 py-1.5 text-gray-500 dark:text-gray-400">{index + 1}</td>
-                      <td className="px-3 py-1.5 text-gray-900 dark:text-gray-200">{entry.citizen.tc}</td>
+                      <td className="px-3 py-1.5 text-gray-900 dark:text-gray-200 font-mono">{entry.citizen.tc}</td>
                       <td className="px-3 py-1.5 text-gray-900 dark:text-gray-200 font-medium">
                         {entry.citizen.name} {entry.citizen.surname}
                       </td>
-                      <td className="px-3 py-1.5 text-gray-500 dark:text-gray-400">
+                      <td className="px-3 py-1.5 text-gray-500 dark:text-gray-400 font-mono">
                         {entry.citizen.validityDate}
                       </td>
                       <td className="px-3 py-1.5">
-                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${status.bg} ${status.color}`}>
-                          {status.text}
-                        </span>
+                         <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${status.bg} ${status.color}`}>
+                           {status.text}
+                         </span>
                       </td>
                       <td className="px-3 py-1.5 text-gray-500 dark:text-gray-400 text-right">{entry.timestamp}</td>
                       <td className="px-3 py-1.5 text-gray-500 dark:text-gray-400 text-right">
@@ -1141,8 +754,10 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
                         </span>
                       </td>
                       <td className="px-3 py-1.5 text-right">
-                        <button
-                          onClick={() => onDelete(entry.id)} className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition" title="Kaydı Sil"
+                        <button 
+                          onClick={() => onDelete(entry.id)}
+                          className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"
+                          title="Kaydı Sil"
                         >
                           <Trash2 size={14} />
                         </button>
@@ -1155,8 +770,8 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
           </div>
         ) : (
           <div className="mt-8 text-center text-gray-400 dark:text-gray-600">
-            <div className="mx-auto w-10 h-10 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-2">
-              <span className="text-base font-bold text-gray-300 dark:text-gray-600">L</span>
+            <div className="mx-auto w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-2">
+              <span className="text-xl font-bold text-gray-300 dark:text-gray-600">L</span>
             </div>
             <p className="text-xs">Henüz kayıt eklenmedi</p>
           </div>
@@ -1164,28 +779,11 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
       </div>
 
+      {/* Floating Chat Icon */}
+      <button className="fixed bottom-4 right-4 bg-white dark:bg-gray-800 p-2.5 rounded-full shadow-lg border border-gray-100 dark:border-gray-700 text-primary-600 dark:text-primary-400 hover:bg-gray-50 dark:hover:bg-gray-700">
+        <MessageSquare size={20} />
+      </button>
 
-      {/* Modal: Completion Warning */}
-      {showCompletionWarning && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-sm p-5 shadow-2xl relative text-center">
-            <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center mx-auto mb-3">
-              <CheckCircle size={24} />
-            </div>
-            <h3 className="text-base font-bold text-gray-900 dark:text-white mb-2">Hedef Sayıya Ulaşıldı</h3>
-            <p className="text-gray-500 dark:text-gray-400 mb-4 text-xs">
-              Son kimlik okutuldu. Denetlemeyi bitirmek için lütfen <strong>"Denetlemeyi Bitir"</strong> butonuna basın.
-            </p>
-
-            <button
-              onClick={() => setShowCompletionWarning(false)}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg transition text-xs"
-            >
-              Tamam
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
