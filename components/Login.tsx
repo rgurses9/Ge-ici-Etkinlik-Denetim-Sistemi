@@ -7,29 +7,42 @@ interface LoginProps {
   onLogin: (user: User) => void;
   isDarkMode: boolean;
   onToggleTheme: () => void;
+  onRefreshUsers?: () => Promise<void>;
 }
 
-const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme }) => {
+const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme, onRefreshUsers }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loginType, setLoginType] = useState<'USER' | 'ADMIN'>('USER');
   const [showManual, setShowManual] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
+    console.log('🔐 Login attempt:', {
+      username,
+      password,
+      totalUsers: users.length,
+      loginType
+    });
+
     const user = users.find(u => u.username === username && u.password === password);
 
     if (user) {
+      console.log('✅ User found:', user.username, user.fullName);
       if (loginType === 'ADMIN' && !user.roles.includes(UserRole.ADMIN)) {
+        console.log('❌ Admin access denied for user:', user.username);
         setError('Bu hesaba yönetici girişi yetkisi verilmemiştir.');
         return;
       }
       onLogin(user);
     } else {
+      console.log('❌ Login failed - user not found');
+      console.log('📊 Available users:', users.map(u => ({ username: u.username, id: u.id })));
       setError('Kullanıcı adı veya şifre hatalı.');
     }
   };
@@ -40,11 +53,33 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
     setError('');
   };
 
+  const handleRefresh = async () => {
+    if (!onRefreshUsers) return;
+
+    setIsRefreshing(true);
+    setError('');
+
+    try {
+      localStorage.removeItem('geds_users_cache');
+      localStorage.removeItem('geds_users_cache_timestamp');
+
+      await onRefreshUsers();
+
+      setError('');
+      console.log('✅ Kullanıcılar yenilendi:', users.length);
+    } catch (error) {
+      console.error('❌ Kullanıcılar yenilenemedi:', error);
+      setError('Kullanıcılar yüklenirken hata oluştu. Lütfen tekrar deneyin.');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4 transition-colors duration-200">
-      
+
       {/* Theme Toggle Button */}
-      <button 
+      <button
         onClick={onToggleTheme}
         className="absolute top-4 right-4 p-2 rounded-full bg-white dark:bg-gray-800 shadow-md text-gray-600 dark:text-yellow-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
       >
@@ -61,22 +96,20 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
         <div className="flex border-b border-gray-200 dark:border-gray-700 mb-6">
           <button
             type="button"
-            className={`flex-1 pb-3 text-sm font-medium transition-colors relative ${
-              loginType === 'USER' 
-                ? 'text-primary-600 dark:text-primary-400 border-b-2 border-primary-600 dark:border-primary-400' 
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-            }`}
+            className={`flex-1 pb-3 text-sm font-medium transition-colors relative ${loginType === 'USER'
+              ? 'text-primary-600 dark:text-primary-400 border-b-2 border-primary-600 dark:border-primary-400'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+              }`}
             onClick={() => handleTabChange('USER')}
           >
             Kullanıcı Girişi
           </button>
           <button
-             type="button"
-            className={`flex-1 pb-3 text-sm font-medium transition-colors relative ${
-              loginType === 'ADMIN' 
-                ? 'text-secondary-600 dark:text-secondary-400 border-b-2 border-secondary-600 dark:border-secondary-400' 
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-            }`}
+            type="button"
+            className={`flex-1 pb-3 text-sm font-medium transition-colors relative ${loginType === 'ADMIN'
+              ? 'text-secondary-600 dark:text-secondary-400 border-b-2 border-secondary-600 dark:border-secondary-400'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+              }`}
             onClick={() => handleTabChange('ADMIN')}
           >
             Yönetici Girişi
@@ -140,7 +173,7 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
               Kullanıcı Girişi Yap
             </button>
           ) : (
-             <button
+            <button
               type="submit"
               className="w-full bg-secondary-600 hover:bg-secondary-500 text-white font-semibold py-3 px-4 rounded-xl transition duration-200 flex items-center justify-center gap-2"
             >
@@ -155,14 +188,23 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
             Sistem Çevrimiçi
           </div>
-          
-          <button 
+
+          <button
             type="button"
             onClick={() => setShowManual(true)}
             className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 text-xs flex items-center gap-1.5 transition-colors"
           >
             <HelpCircle size={14} />
             Yardım ve Kullanım Kılavuzu
+          </button>
+
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="text-xs text-gray-500 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 underline disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isRefreshing ? '🔄 Yenileniyor...' : '❓ Giriş yapamıyor musunuz? Tıklayın'}
           </button>
         </div>
       </div>
@@ -182,7 +224,7 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
                   <p className="text-sm text-gray-500 dark:text-gray-400">Geçici Etkinlik Denetim Sistemi</p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => setShowManual(false)}
                 className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
               >
@@ -192,7 +234,7 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
 
             {/* Modal Content */}
             <div className="flex-1 overflow-y-auto p-8 prose prose-blue dark:prose-invert max-w-none text-gray-600 dark:text-gray-300">
-              
+
               <section className="mb-10">
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                   <span className="w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 flex items-center justify-center text-xs">1</span>
@@ -280,18 +322,18 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
                   Önemli Bilgilendirmeler
                 </h3>
                 <div className="grid gap-4 text-sm">
-                   <div className="flex gap-3">
-                     <CheckCircle size={18} className="text-green-600 dark:text-green-400 shrink-0 mt-0.5" />
-                     <p><strong>Veritabanı Kontrolü:</strong> Yeşil renk, kişinin veritabanında olduğunu ve geçerli olduğunu gösterir. Kırmızı renk ve uyarı mesajı, kişinin bulunamadığını veya süresinin dolduğunu belirtir.</p>
-                   </div>
-                   <div className="flex gap-3">
-                     <AlertCircle size={18} className="text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
-                     <p><strong>Çakışma Kontrolü:</strong> Bir kişi aynı anda sadece bir aktif etkinlikte bulunabilir. Çakışma durumunda sistem, hangi etkinlikte ve saat aralığında görevli olduğunu size bildirir.</p>
-                   </div>
-                   <div className="flex gap-3">
-                     <Info size={18} className="text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-                     <p><strong>Canlı Senkronizasyon:</strong> Sistem internet üzerinden çalışır. Bir bilgisayarda yapılan okutma işlemi, diğer bilgisayarlarda anlık olarak güncellenir.</p>
-                   </div>
+                  <div className="flex gap-3">
+                    <CheckCircle size={18} className="text-green-600 dark:text-green-400 shrink-0 mt-0.5" />
+                    <p><strong>Veritabanı Kontrolü:</strong> Yeşil renk, kişinin veritabanında olduğunu ve geçerli olduğunu gösterir. Kırmızı renk ve uyarı mesajı, kişinin bulunamadığını veya süresinin dolduğunu belirtir.</p>
+                  </div>
+                  <div className="flex gap-3">
+                    <AlertCircle size={18} className="text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                    <p><strong>Çakışma Kontrolü:</strong> Bir kişi aynı anda sadece bir aktif etkinlikte bulunabilir. Çakışma durumunda sistem, hangi etkinlikte ve saat aralığında görevli olduğunu size bildirir.</p>
+                  </div>
+                  <div className="flex gap-3">
+                    <Info size={18} className="text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                    <p><strong>Canlı Senkronizasyon:</strong> Sistem internet üzerinden çalışır. Bir bilgisayarda yapılan okutma işlemi, diğer bilgisayarlarda anlık olarak güncellenir.</p>
+                  </div>
                 </div>
               </section>
 
@@ -299,7 +341,7 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
 
             {/* Modal Footer */}
             <div className="p-6 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50 rounded-b-2xl flex justify-end">
-              <button 
+              <button
                 onClick={() => setShowManual(false)}
                 className="px-6 py-2.5 bg-gray-900 dark:bg-gray-700 text-white font-medium rounded-xl hover:bg-gray-800 dark:hover:bg-gray-600 transition-colors"
               >
