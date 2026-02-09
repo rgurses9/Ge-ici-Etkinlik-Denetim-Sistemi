@@ -2,17 +2,29 @@ import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBnSG0V370gNnKPTwfb2tZTi6MEqF5pHUA",
-  authDomain: "denetleme-1f271.firebaseapp.com",
-  databaseURL: "https://denetleme-1f271-default-rtdb.firebaseio.com",
-  projectId: "denetleme-1f271",
-  storageBucket: "denetleme-1f271.firebasestorage.app",
-  messagingSenderId: "276489440280",
-  appId: "1:276489440280:web:a5510870538ddd8ba2476d",
-  measurementId: "G-LKQQQ08VCM"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
-const app = initializeApp(firebaseConfig);
+
+let app;
+try {
+  app = initializeApp(firebaseConfig);
+} catch (error: any) {
+  // If Firebase app already exists during HMR, use the existing one
+  if (error.code === 'app/duplicate-app') {
+    const { getApp } = await import('firebase/app');
+    app = getApp();
+  } else {
+    throw error;
+  }
+}
+
 const db = getFirestore(app);
 
 export { db };
