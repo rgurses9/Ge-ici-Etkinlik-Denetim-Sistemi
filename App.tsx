@@ -15,7 +15,8 @@ import {
   query,
   orderBy,
   writeBatch,
-  getDocs
+  getDocs,
+  where
 } from 'firebase/firestore';
 
 const App: React.FC = () => {
@@ -27,6 +28,7 @@ const App: React.FC = () => {
 
   const [events, setEvents] = useState<Event[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [isUsersLoading, setIsUsersLoading] = useState(true);
   const [scannedEntries, setScannedEntries] = useState<Record<string, ScanEntry[]>>({});
 
   // Theme State
@@ -58,6 +60,7 @@ const App: React.FC = () => {
   // Refresh users function (for login troubleshooting)
   const loadUsersFromFirebase = async (forceRefresh = false) => {
     console.log('🔄 Refreshing users from Firebase...');
+    setIsUsersLoading(true);
     try {
       const q = query(collection(db, 'users'), orderBy('username', 'asc'));
       const snapshot = await getDocs(q);
@@ -76,11 +79,24 @@ const App: React.FC = () => {
     } catch (error: any) {
       console.error("❌ Error refreshing users:", error);
       throw error;
+    } finally {
+      setIsUsersLoading(false);
     }
   };
 
   // 1. Users Subscription & Initial Seeding
   useEffect(() => {
+    // Safety timeout: stop loading spinner after 5 seconds if Firebase is slow
+    const timeoutId = setTimeout(() => {
+      setIsUsersLoading((prev) => {
+        if (prev) {
+          console.warn("⚠️ User data loading timed out.");
+          return false;
+        }
+        return prev;
+      });
+    }, 5000);
+
     const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
       const fetchedUsers: User[] = snapshot.docs.map(doc => doc.data() as User);
 
@@ -93,13 +109,24 @@ const App: React.FC = () => {
       } else {
         setUsers(fetchedUsers);
       }
+      setIsUsersLoading(false);
+      clearTimeout(timeoutId);
+    }, (error) => {
+      console.error("❌ Users listener error:", error);
+      setIsUsersLoading(false);
+      clearTimeout(timeoutId);
     });
 
-    return () => unsubUsers();
+    return () => {
+      unsubUsers();
+      clearTimeout(timeoutId);
+    };
   }, []);
 
   // 2. Events Subscription & Initial Seeding
   useEffect(() => {
+    if (!session.isAuthenticated) return;
+
     const unsubEvents = onSnapshot(collection(db, 'events'), (snapshot) => {
       const fetchedEvents: Event[] = snapshot.docs.map(doc => doc.data() as Event);
 
@@ -115,15 +142,80 @@ const App: React.FC = () => {
     });
 
     return () => unsubEvents();
-  }, []);
+  }, [session.isAuthenticated]);
 
-  // 3. Scanned Entries Subscription
+  // Conflict Check (On-Demand)
+  const checkCitizenshipConflict = async (tc: string, ignoreEventId: string): Promise<string | null> => {
+    try {
+      const q = query(collection(db, 'scanned_entries'), where('citizen.tc', '==', tc));
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) return null;
+
+      const otherScans = snapshot.docs.map(d => d.data() as ScanEntry);
+
+      const currentEvent = events.find(e => e.id === ignoreEventId);
+      if (!currentEvent) return null;
+
+      const currentStart = new Date(currentEvent.startDate).getTime();
+      const currentEnd = new Date(currentEvent.endDate).getTime();
+
+      for (const scan of otherScans) {
+        if (scan.eventId === ignoreEventId) continue;
+
+        const otherEvent = events.find(e => e.id === scan.eventId);
+        if (!otherEvent) continue;
+
+        const otherStart = new Date(otherEvent.startDate).getTime();
+        const otherEnd = new Date(otherEvent.endDate).getTime();
+
+        if (currentStart < otherEnd && currentEnd > otherStart) {
+          return `⚠️ ÇAKIŞMA: Bu kişi ilk olarak "${otherEvent.name}" etkinliğinde okutulmuştur.\nBu etkinlikte görev alıyor (${scan.recordedBy || 'Bilinmiyor'} tarafından kaydedildi). Lütfen oradaki denetlemeci ile iletişime geçiniz.`;
+        }
+      }
+
+      return null;
+    } catch (e) {
+      console.error("Conflict check error:", e);
+      return null;
+    }
+  };
+
+  // 3. Optimized Scanned Entries Subscription
   useEffect(() => {
-    const q = query(collection(db, 'scanned_entries'), orderBy('timestamp', 'asc'));
+    if (!session.isAuthenticated) return;
+
+    let targetEventIds: string[] = [];
+
+    if (activeEventId) {
+      // Audit Screen: Single Event
+      targetEventIds = [activeEventId];
+    } else {
+      // Dashboard: Continuing Events (Active + Count > 0)
+      // Limit to 10 for 'in' query safety
+      targetEventIds = events
+        .filter(e => e.status === 'ACTIVE' && e.currentCount > 0)
+        .map(e => e.id)
+        .slice(0, 10);
+    }
+
+    if (targetEventIds.length === 0) {
+      setScannedEntries({});
+      return;
+    }
+
+    // Firestore 'in' query allows max 10 values
+    // If user has >10 continuing events, only top 10 will update live.
+    // This is an optimization tradeoff.
+    const q = query(
+      collection(db, 'scanned_entries'),
+      where('eventId', 'in', targetEventIds),
+      orderBy('timestamp', 'desc')
+    );
+
     const unsubEntries = onSnapshot(q, (snapshot) => {
       const fetchedEntries: ScanEntry[] = snapshot.docs.map(doc => doc.data() as ScanEntry);
 
-      // Group by eventId
       const grouped: Record<string, ScanEntry[]> = {};
       fetchedEntries.forEach(entry => {
         if (!grouped[entry.eventId]) {
@@ -136,7 +228,7 @@ const App: React.FC = () => {
     });
 
     return () => unsubEntries();
-  }, []);
+  }, [session.isAuthenticated, activeEventId, events]); // Re-run when event counts change (e.g. new event becomes 'continuing')
 
   // --- Handlers (Now using Firestore) ---
 
@@ -160,6 +252,15 @@ const App: React.FC = () => {
       await setDoc(doc(db, 'events', event.id), event);
     } catch (e) {
       console.error("Error adding event: ", e);
+    }
+  };
+
+  const handleUpdateEvent = async (updatedEvent: Event) => {
+    try {
+      const eventRef = doc(db, 'events', updatedEvent.id);
+      await updateDoc(eventRef, { ...updatedEvent });
+    } catch (e) {
+      console.error("Error updating event: ", e);
     }
   };
 
@@ -294,6 +395,40 @@ const App: React.FC = () => {
     });
   };
 
+  // Refresh Passive Data (On-Demand)
+  const refreshPassiveData = async (eventIds: string[]) => {
+    if (eventIds.length === 0) return;
+
+    try {
+      const chunks = [];
+      for (let i = 0; i < eventIds.length; i += 10) {
+        chunks.push(eventIds.slice(i, i + 10));
+      }
+
+      const newEntries: ScanEntry[] = [];
+
+      for (const chunk of chunks) {
+        const q = query(collection(db, 'scanned_entries'), where('eventId', 'in', chunk));
+        const snap = await getDocs(q);
+        newEntries.push(...snap.docs.map(d => d.data() as ScanEntry));
+      }
+
+      setScannedEntries(prev => {
+        const next = { ...prev };
+        // Reset entries for requested events to ensure clean update
+        eventIds.forEach(eid => next[eid] = []);
+
+        newEntries.forEach(entry => {
+          if (!next[entry.eventId]) next[entry.eventId] = [];
+          next[entry.eventId].push(entry);
+        });
+        return next;
+      });
+    } catch (e) {
+      console.error("Error refreshing passive data:", e);
+    }
+  };
+
   const handleAddUser = async (user: User) => {
     try {
       await setDoc(doc(db, 'users', user.id), user);
@@ -310,12 +445,25 @@ const App: React.FC = () => {
     }
   };
 
+  const handleDeleteUser = async (userId: string) => {
+    try {
+      if (session.currentUser?.id === userId) {
+        alert("Kendinizi silemezsiniz!");
+        return;
+      }
+      await deleteDoc(doc(db, 'users', userId));
+    } catch (e) {
+      console.error("Error deleting user: ", e);
+    }
+  };
+
   // --- Render Logic ---
 
   if (!session.isAuthenticated || !session.currentUser) {
     return (
       <Login
         users={users}
+        isLoading={isUsersLoading}
         onLogin={handleLogin}
         isDarkMode={isDarkMode}
         onToggleTheme={toggleTheme}
@@ -342,6 +490,7 @@ const App: React.FC = () => {
         onDelete={handleDeleteScan}
         scannedList={currentList}
         allScannedEntries={scannedEntries}
+        onCheckConflict={checkCitizenshipConflict}
         onDatabaseUpdate={handleDatabaseUpdate}
         isDarkMode={isDarkMode}
       />
@@ -361,8 +510,11 @@ const App: React.FC = () => {
       onReactivateEvent={handleReactivateEvent}
       onAddUser={handleAddUser}
       onUpdateUser={handleUpdateUser}
+      onDeleteUser={handleDeleteUser}
+      onUpdateEvent={handleUpdateEvent}
       isDarkMode={isDarkMode}
       onToggleTheme={toggleTheme}
+      onRefreshPassiveData={refreshPassiveData}
     />
   );
 };

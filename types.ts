@@ -21,6 +21,12 @@ export interface Event {
   endDate: string;
   status: 'ACTIVE' | 'PASSIVE';
   completionDuration?: string; // "HH:MM:SS" format
+  companies?: CompanyTarget[];
+}
+
+export interface CompanyTarget {
+  name: string;
+  count: number;
 }
 
 export interface Citizen {

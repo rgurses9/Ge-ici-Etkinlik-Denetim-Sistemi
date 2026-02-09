@@ -23,3 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 migration-progress.json
+
+# Vercel environment setup (contains sensitive data)
+vercel-env-setup.md

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { Event, User, UserRole, ScanEntry } from '../types';
-import { Plus, Users, Calendar, Play, LogOut, Eye, Trash2, Edit, UserCog, Key, ShieldCheck, User as UserIcon, Activity, Archive, Download, RefreshCw, Clock, Wifi, X, CheckCircle, Sun, Moon, Folder, ChevronDown, ChevronUp } from 'lucide-react';
+
+import React, { useState, useMemo, useEffect } from 'react';
+import { Event, User, UserRole, ScanEntry, CompanyTarget } from '../types';
+import { Plus, Users, Calendar, Play, LogOut, Eye, Trash2, Edit, UserCog, Key, ShieldCheck, User as UserIcon, Activity, Archive, Download, RefreshCw, Clock, Wifi, X, CheckCircle, Sun, Moon, Folder, ChevronDown, ChevronUp, AlertTriangle, AlertCircle, Upload } from 'lucide-react';
 
 interface AdminDashboardProps {
   currentUser: User;
@@ -12,8 +13,11 @@ interface AdminDashboardProps {
   onAddEvent: (event: Event) => void;
   onDeleteEvent: (id: string) => void;
   onReactivateEvent: (id: string) => void;
-  onAddUser: (user: User) => void;
-  onUpdateUser: (user: User) => void;
+  onAddUser: (user: User) => Promise<void>;
+  onUpdateUser: (user: User) => Promise<void>;
+  onDeleteUser: (userId: string) => Promise<void>;
+  onUpdateEvent: (event: Event) => void;
+  onRefreshPassiveData: (eventIds: string[]) => Promise<void>;
   isDarkMode: boolean;
   onToggleTheme: () => void;
 }
@@ -30,12 +34,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onReactivateEvent,
   onAddUser,
   onUpdateUser,
+  onUpdateEvent,
+  onRefreshPassiveData,
   isDarkMode,
   onToggleTheme
 }) => {
   const [activeTab, setActiveTab] = useState<'EVENTS' | 'USERS'>('EVENTS');
   const [showEventModal, setShowEventModal] = useState(false);
   const [viewingEvent, setViewingEvent] = useState<Event | null>(null);
+  const [editingEvent, setEditingEvent] = useState<Event | null>(null);
 
   // Accordion state for passive events
   const [expandedMonths, setExpandedMonths] = useState<string[]>([]);
@@ -45,6 +52,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [newEventTarget, setNewEventTarget] = useState(50);
   const [newEventStart, setNewEventStart] = useState('');
   const [newEventEnd, setNewEventEnd] = useState('');
+
+  // Multi-Company State
+  const [isMultiCompany, setIsMultiCompany] = useState(false);
+  const [companyCountInput, setCompanyCountInput] = useState(1);
+  const [companyTargets, setCompanyTargets] = useState<CompanyTarget[]>([]);
+
+  // Effect to manage company inputs array
+  useEffect(() => {
+    if (isMultiCompany) {
+      setCompanyTargets(prev => {
+        const currentLength = prev.length;
+        if (companyCountInput > currentLength) {
+          // Add new empty targets
+          const newItems = Array(companyCountInput - currentLength).fill(null).map(() => ({ name: '', count: 0 }));
+          return [...prev, ...newItems];
+        } else if (companyCountInput < currentLength) {
+          // Trim array
+          return prev.slice(0, companyCountInput);
+        }
+        return prev;
+      });
+    }
+  }, [companyCountInput, isMultiCompany]);
 
   // User Management State
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -82,24 +112,186 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
-  const handleCreateEvent = (e: React.FormEvent) => {
+  const handleSaveEvent = (e: React.FormEvent) => {
     e.preventDefault();
-    const newEvent: Event = {
-      id: Date.now().toString(),
-      name: newEventName,
-      targetCount: newEventTarget,
-      currentCount: 0,
-      startDate: newEventStart,
-      endDate: newEventEnd,
-      status: 'ACTIVE'
-    };
-    onAddEvent(newEvent);
-    setShowEventModal(false);
-    // Reset form
+    if (editingEvent) {
+      const updatedEvent: Event = {
+        ...editingEvent,
+        name: newEventName,
+        targetCount: isMultiCompany ? companyTargets.reduce((sum, t) => sum + (t.count || 0), 0) : newEventTarget,
+        startDate: newEventStart,
+        endDate: newEventEnd,
+        companies: isMultiCompany ? companyTargets : undefined
+      };
+      onUpdateEvent(updatedEvent);
+    } else {
+      const newEvent: Event = {
+        id: crypto.randomUUID(),
+        name: newEventName,
+        targetCount: isMultiCompany ? companyTargets.reduce((sum, t) => sum + (t.count || 0), 0) : newEventTarget,
+        currentCount: 0,
+        startDate: newEventStart,
+        endDate: newEventEnd,
+        status: 'ACTIVE',
+        companies: isMultiCompany ? companyTargets : undefined
+      };
+      onAddEvent(newEvent);
+    }
     setNewEventName('');
     setNewEventTarget(50);
     setNewEventStart('');
     setNewEventEnd('');
+    setIsMultiCompany(false);
+    setCompanyCountInput(1);
+    setCompanyTargets([]);
+    setShowEventModal(false);
+    setEditingEvent(null);
+  };
+
+  const handleEventExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Reset input
+    e.target.value = '';
+
+    try {
+      const XLSX = await import('xlsx');
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer);
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const data: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+
+      let addedCount = 0;
+      let errorLog: string[] = [];
+
+      for (let i = 0; i < data.length; i++) {
+        const row = data[i];
+        if (!row || row.length < 2) continue;
+
+        const col0 = String(row[0]).trim(); // Date
+        const col1 = String(row[1]).trim(); // Time
+        const col2 = String(row[2]).trim(); // Name
+
+        // Skip lines that don't look like data (no digits in date col)
+        if (!/\d/.test(col0)) {
+          continue;
+        }
+
+        // Date Parse (Flexible Logic for M/D/YY, DD.MM.YYYY, YYYY-MM-DD)
+        let day, month, year;
+        const parts = col0.split(/[./-]/);
+
+        if (parts.length === 3) {
+          const p1 = parseInt(parts[0]);
+          const p2 = parseInt(parts[1]);
+          let p3 = parseInt(parts[2]); // Year part usually
+
+          // 1. Normalize Year (e.g. 25 -> 2025)
+          if (p3 < 100) p3 += 2000;
+
+          // 2. Normalize positions
+          if (p1 > 1000) {
+            // YYYY-MM-DD pattern
+            year = p1; month = p2 - 1; day = p3;
+          } else {
+            // DD.MM.YYYY or MM/DD/YYYY pattern
+            if (p1 > 12) {
+              // First part is Day (e.g. 20.09.2025)
+              day = p1; month = p2 - 1; year = p3;
+            } else if (p2 > 12) {
+              // Second part is Day (e.g. 9/20/25)
+              month = p1 - 1; day = p2; year = p3;
+            } else {
+              // Ambiguous (e.g. 05.04.2025 or 4/5/25)
+              // Heuristic: Dot usually means TR format (DD.MM), Slash usually means US (MM/DD) from Excel export
+              if (col0.includes('.')) {
+                day = p1; month = p2 - 1; year = p3;
+              } else {
+                // Likely MM/DD/YY
+                month = p1 - 1; day = p2; year = p3;
+              }
+            }
+          }
+        } else {
+          errorLog.push(`Satır ${i + 1}: Tarih formatı geçersiz veya tanınmadı(${col0})`);
+          continue;
+        }
+
+        // Time Parse
+        const timeMatches = Array.from(col1.matchAll(/(\d{1,2})[:.](\d{2})/g));
+        if (timeMatches.length < 2) {
+          errorLog.push(`Satır ${i + 1}: Saat aralığı bulunamadı(${col1})`);
+          continue;
+        }
+
+        const startH = parseInt(timeMatches[0][1]);
+        const startM = parseInt(timeMatches[0][2]);
+        const endH = parseInt(timeMatches[1][1]);
+        const endM = parseInt(timeMatches[1][2]);
+
+        // Target Logic (Check Col 6 [F] then Col 7 [G])
+        let target = parseInt(row[5]);
+        if (isNaN(target)) target = parseInt(row[6]);
+        if (isNaN(target)) target = 50; // Default
+
+        // Create Date Objects
+        const startDateObj = new Date(year, month, day, startH, startM);
+        const endDateObj = new Date(year, month, day, endH, endM);
+
+        if (endDateObj < startDateObj) {
+          endDateObj.setDate(endDateObj.getDate() + 1);
+        }
+
+        const toLocalISO = (d: Date) => {
+          const pad = (n: number) => n.toString().padStart(2, '0');
+          return `${d.getFullYear()} -${pad(d.getMonth() + 1)} -${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())} `;
+        };
+
+        // Format Date Part for Event Name (DD.MM.YYYY)
+        const formattedDatePart = `${String(day).padStart(2, '0')}.${String(month + 1).padStart(2, '0')}.${year} `;
+        const eventName = `${formattedDatePart} ${col2} `;
+
+        const newEvent: Event = {
+          id: Date.now().toString() + Math.random().toString().slice(2, 6),
+          name: eventName,
+          targetCount: target,
+          currentCount: 0,
+          startDate: toLocalISO(startDateObj),
+          endDate: toLocalISO(endDateObj),
+          status: 'ACTIVE'
+        };
+
+        console.log(`Adding event: ${eventName} `, newEvent);
+
+
+        onAddEvent(newEvent);
+        addedCount++;
+        await new Promise(r => setTimeout(r, 10));
+      }
+
+      if (addedCount > 0) {
+        alert(`${addedCount} etkinlik başarıyla eklendi.`);
+      } else {
+        const errorMsg = errorLog.length > 0
+          ? `Tespit edilen hatalar: \n${errorLog.slice(0, 5).join('\n')} `
+          : 'Excel formatı uygun görünmüyor veya veri satırı bulunamadı.';
+        alert(`Hiçbir etkinlik oluşturulamadı.\n${errorMsg} `);
+      }
+
+    } catch (err) {
+      console.error("Excel upload error:", err);
+      alert('Dosya okunurken hata oluştu.');
+    }
+  };
+
+  const handleStartEditEvent = (event: Event) => {
+    setEditingEvent(event);
+    setNewEventName(event.name);
+    setNewEventTarget(event.targetCount);
+    setNewEventStart(event.startDate);
+    setNewEventEnd(event.endDate);
+    setShowEventModal(true);
   };
 
   const handleCreateUser = (e: React.FormEvent) => {
@@ -146,18 +338,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     onStartAudit(eventId);
   };
 
-  const checkWorkStatus = (dateStr: string) => {
-    if (!dateStr || dateStr === '-' || dateStr.trim() === '') {
+  const checkWorkStatus = (dateInput: any) => {
+    const dateStr = String(dateInput || '').trim();
+
+    if (!dateStr || dateStr === '-' || dateStr === 'undefined' || dateStr === 'null') {
       return { text: 'BELİRSİZ', color: 'text-gray-500', bg: 'bg-gray-100 dark:bg-gray-700 dark:text-gray-300' };
     }
 
     let targetDate: Date | null = null;
-    if (dateStr.includes('-') && dateStr.length === 10) {
+
+    // Check if parts match YYYY-MM-DD or DD.MM.YYYY
+    if (dateStr.includes('-')) {
       targetDate = new Date(dateStr);
     } else if (dateStr.includes('.')) {
       const parts = dateStr.split('.');
       if (parts.length === 3) {
-        targetDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+        // Fix for potential string parts " 01 "
+        const day = parseInt(parts[0].trim());
+        const month = parseInt(parts[1].trim());
+        const year = parseInt(parts[2].trim());
+        if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
+          targetDate = new Date(year, month - 1, day);
+        }
       }
     }
 
@@ -198,7 +400,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const ws = XLSX.utils.json_to_sheet(dataToExport);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Katılımcı Listesi");
-    XLSX.writeFile(wb, `${viewingEvent.name}_Katilimci_Listesi.xlsx`);
+    XLSX.writeFile(wb, `${viewingEvent.name} _Katilimci_Listesi.xlsx`);
+  };
+
+  const formatDateTime = (dateString: string) => {
+    if (!dateString) return '';
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleString('tr-TR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch {
+      return dateString;
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -217,8 +435,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
-  const continuingEvents = events.filter(e => e.status === 'ACTIVE' && e.currentCount > 0 && e.currentCount < e.targetCount);
-  const activeEvents = events.filter(e => e.status === 'ACTIVE');
+  // Revised logic:
+  // Continuing = Active + Count > 0
+  const continuingEvents = events.filter(e => e.status === 'ACTIVE' && e.currentCount > 0);
+  // Pending = Active + Count == 0 (This replaces the main list)
+  const pendingEvents = events.filter(e => e.status === 'ACTIVE' && e.currentCount === 0);
+  // We use pendingEvents for the main "Active Audits" list now
+  const activeEvents = pendingEvents;
   // --- Passive Events Logic ---
   const allPassiveEvents = events.filter(e => e.status === 'PASSIVE')
     .sort((a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime());
@@ -226,13 +449,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const recentPassiveEvents = allPassiveEvents.slice(0, 35);
 
   // Group by "Month Year" (e.g., "Şubat 2026")
-  const groupedPassiveEvents = recentPassiveEvents.reduce((acc, event) => {
+  const groupedPassiveEvents = allPassiveEvents.reduce((acc, event) => {
     const date = new Date(event.endDate);
     // Capitalize first letter of month
     const monthName = date.toLocaleString('tr-TR', { month: 'long' });
     const formattedMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
     const year = date.getFullYear();
-    const key = `${formattedMonth} ${year}`;
+    const key = `${formattedMonth} ${year} `;
 
     if (!acc[key]) {
       acc[key] = [];
@@ -253,9 +476,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col transition-colors duration-200">
       {/* Header */}
       <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-3">
-          <div className="flex items-center gap-3">
-            <h1 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">Etkinlik Sistemi</h1>
+        <div className="max-w-7xl mx-auto px-4 py-2 flex flex-col sm:flex-row justify-between items-center gap-2">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <h1 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white">Etkinlik Sistemi</h1>
             <span className="bg-secondary-100 dark:bg-secondary-900/30 text-secondary-600 dark:text-secondary-400 text-xs px-2 py-1 rounded-full font-bold uppercase">
               {isAdmin ? 'Yönetici' : 'Kullanıcı'}
             </span>
@@ -301,21 +524,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {/* Actions Bar */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-          <h2 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white">
-            {activeTab === 'EVENTS' ? 'Aktif Denetimler' : 'Sistem Kullanıcıları'}
-          </h2>
+          <div className="flex flex-col gap-0.5">
+            <h2 className="text-lg font-bold text-gray-800 dark:text-white">
+              {activeTab === 'EVENTS' ? `Bekleyen Denetimler(${activeEvents.length})` : 'Sistem Kullanıcıları'}
+            </h2>
+          </div>
           <div className="flex flex-wrap gap-2 w-full sm:w-auto">
             {isAdmin && (
               <>
                 <button
                   onClick={() => setActiveTab('EVENTS')}
-                  className={`flex-1 sm:flex-none px-3 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 border ${activeTab === 'EVENTS' ? 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 shadow-sm text-gray-900 dark:text-white' : 'bg-transparent border-transparent text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                  className={`flex - 1 sm: flex - none px - 3 py - 2 rounded - lg text - sm font - medium flex items - center justify - center gap - 2 border ${activeTab === 'EVENTS' ? 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 shadow-sm text-gray-900 dark:text-white' : 'bg-transparent border-transparent text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'} `}
                 >
                   <Calendar size={16} /> Etkinlik
                 </button>
                 <button
                   onClick={() => setActiveTab('USERS')}
-                  className={`flex-1 sm:flex-none px-3 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 border ${activeTab === 'USERS' ? 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 shadow-sm text-gray-900 dark:text-white' : 'bg-transparent border-transparent text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                  className={`flex - 1 sm: flex - none px - 3 py - 2 rounded - lg text - sm font - medium flex items - center justify - center gap - 2 border ${activeTab === 'USERS' ? 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 shadow-sm text-gray-900 dark:text-white' : 'bg-transparent border-transparent text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'} `}
                 >
                   <Users size={16} /> Kullanıcı
                 </button>
@@ -323,12 +548,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             )}
 
             {isAdmin && activeTab === 'EVENTS' && (
-              <button
-                onClick={() => setShowEventModal(true)}
-                className="flex-1 sm:flex-none px-3 py-2 bg-secondary-600 text-white rounded-lg text-sm font-medium hover:bg-secondary-700 shadow-sm flex items-center justify-center gap-2"
-              >
-                <Plus size={16} /> Ekle
-              </button>
+              <>
+                <button
+                  onClick={() => setShowEventModal(true)}
+                  className="flex-1 sm:flex-none px-3 py-2 bg-secondary-600 text-white rounded-lg text-sm font-medium hover:bg-secondary-700 shadow-sm flex items-center justify-center gap-2"
+                >
+                  <Plus size={16} /> Ekle
+                </button>
+                <div className="relative">
+                  <button
+                    onClick={() => document.getElementById('event-excel-upload')?.click()}
+                    className="flex-1 sm:flex-none h-full px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 shadow-sm flex items-center justify-center gap-2"
+                  >
+                    <Upload size={16} /> Excel Yükle
+                  </button>
+                  <input
+                    type="file"
+                    id="event-excel-upload"
+                    className="hidden"
+                    accept=".xlsx, .xls"
+                    onChange={handleEventExcelUpload}
+                  />
+                </div>
+              </>
             )}
 
             {isAdmin && activeTab === 'USERS' && (
@@ -346,66 +588,87 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <>
             {/* Active Event List */}
             <div className="space-y-4">
-              {activeEvents.map((event) => (
-                <div key={event.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 sm:p-6 shadow-sm hover:shadow-md transition">
-                  <div className="flex flex-col gap-4">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <h3 className="text-lg font-bold text-gray-900 dark:text-white break-words">{event.name}</h3>
-                        <div className="flex flex-wrap items-center gap-2 mt-1">
-                          <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 font-medium bg-gray-50 dark:bg-gray-700 px-2 py-1 rounded">
-                            <Clock size={12} />
-                            {formatDate(event.startDate)}
+              {activeEvents.map((event) => {
+                const isLate = new Date(event.startDate) < new Date();
+                const textColor = isLate ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white';
+
+                return (
+                  <div key={event.id} className={`bg - white dark: bg - gray - 800 rounded - xl border ${isLate ? 'border-red-500 dark:border-red-500 ring-1 ring-red-500/50' : 'border-gray-200 dark:border-gray-700'} p - 3 sm: p - 4 shadow - sm hover: shadow - md transition`}>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          {isLate && (
+                            <div className="text-[10px] font-bold text-red-600 dark:text-red-400 mb-1 flex items-center gap-1 animate-pulse">
+                              <AlertTriangle size={10} />
+                              VERİ GİRİŞİ YAPILMAMIŞ
+                            </div>
+                          )}
+                          <h4 className={`font - bold ${textColor} mb - 1 line - clamp - 2 text - xs sm: text - sm`}>{event.name}</h4>
+                          <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                            <div className={`flex items - center gap - 1.5 text - [10px] ${isLate ? 'text-red-500 dark:text-red-300 bg-red-50 dark:bg-red-900/20' : 'text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700'} font - medium px - 1.5 py - 0.5 rounded`}>
+                              <Clock size={10} />
+                              {formatDate(event.startDate)}
+                            </div>
+                            <span className="text-gray-300 dark:text-gray-600">-</span>
+                            <div className={`flex items - center gap - 1.5 text - [10px] ${isLate ? 'text-red-500 dark:text-red-300 bg-red-50 dark:bg-red-900/20' : 'text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700'} font - medium px - 1.5 py - 0.5 rounded`}>
+                              <Clock size={10} />
+                              {formatDate(event.endDate)}
+                            </div>
                           </div>
-                          <span className="text-gray-300 dark:text-gray-600">-</span>
-                          <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 font-medium bg-gray-50 dark:bg-gray-700 px-2 py-1 rounded">
-                            <Clock size={12} />
-                            {formatDate(event.endDate)}
+                          <div className={`flex items - center gap - 3 mt - 2 text - [10px] ${isLate ? 'text-red-500 dark:text-red-300' : 'text-gray-500 dark:text-gray-400'} `}>
+                            <span>Hedef: {event.targetCount}</span>
+                            <span>•</span>
+                            <span className={event.currentCount >= event.targetCount ? "text-green-600 dark:text-green-400 font-medium" : ""}>
+                              {event.currentCount} / {event.targetCount}
+                            </span>
+                          </div>
+                          {/* Progress Bar in Card */}
+                          <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1 mt-1.5 max-w-xs">
+                            <div
+                              className="bg-blue-600 dark:bg-blue-500 h-1 rounded-full transition-all duration-500"
+                              style={{ width: `${Math.min(100, (event.currentCount / event.targetCount) * 100)}% ` }}
+                            ></div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-4 mt-3 text-sm text-gray-500 dark:text-gray-400">
-                          <span>Hedef: {event.targetCount}</span>
-                          <span>•</span>
-                          <span className={event.currentCount >= event.targetCount ? "text-green-600 dark:text-green-400 font-medium" : ""}>
-                            {event.currentCount} / {event.targetCount}
-                          </span>
-                        </div>
-                        {/* Progress Bar in Card */}
-                        <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1.5 mt-2 max-w-xs">
-                          <div
-                            className="bg-blue-600 dark:bg-blue-500 h-1.5 rounded-full transition-all duration-500"
-                            style={{ width: `${Math.min(100, (event.currentCount / event.targetCount) * 100)}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                      <div className="flex gap-2 shrink-0">
-                        <button
-                          onClick={() => handleStartAuditClick(event.id)}
-                          className="p-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg shadow-sm transition"
-                          title="Denetimi Başlat"
-                        >
-                          <Play size={20} className="fill-current" />
-                        </button>
-                        <button
-                          onClick={() => setViewingEvent(event)}
-                          className="p-2.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-lg transition"
-                          title="Listeyi Gör"
-                        >
-                          <Eye size={20} />
-                        </button>
-                        {isAdmin && (
+                        <div className="flex gap-2 shrink-0 items-start">
                           <button
-                            onClick={() => onDeleteEvent(event.id)}
-                            className="p-2.5 text-red-400 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg transition"
+                            onClick={() => handleStartAuditClick(event.id)}
+                            className="p-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-md shadow-sm transition"
+                            title="Denetimi Başlat"
                           >
-                            <Trash2 size={20} />
+                            <Play size={14} className="fill-current" />
                           </button>
-                        )}
+                          <button
+                            onClick={() => setViewingEvent(event)}
+                            className="p-1.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-md transition"
+                            title="Listeyi Gör"
+                          >
+                            <Eye size={14} />
+                          </button>
+                          {/* Edit Button */}
+                          {isAdmin && (
+                            <button
+                              onClick={() => handleStartEditEvent(event)}
+                              className="p-1.5 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-md transition"
+                              title="Düzenle"
+                            >
+                              <Edit size={14} />
+                            </button>
+                          )}
+                          {isAdmin && (
+                            <button
+                              onClick={() => onDeleteEvent(event.id)}
+                              className="p-1.5 text-red-400 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-md transition"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               {activeEvents.length === 0 && (
                 <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 border-dashed">
@@ -417,126 +680,293 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             {/* Continuing Audits Section */}
-            {continuingEvents.length > 0 && (
-              <div className="mt-8">
-                <div className="flex items-center gap-2 mb-4">
-                  <Activity className="text-green-600 dark:text-green-400" size={20} />
-                  <h3 className="text-lg font-bold text-gray-800 dark:text-white">Devam Eden</h3>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {continuingEvents.map(event => (
-                    <button
-                      key={event.id}
-                      onClick={() => handleStartAuditClick(event.id)}
-                      className="bg-white dark:bg-gray-800 border border-green-200 dark:border-green-800 p-4 rounded-xl shadow-sm hover:shadow-md hover:border-green-400 dark:hover:border-green-600 transition text-left group w-full"
-                    >
-                      <h4 className="font-bold text-gray-900 dark:text-white group-hover:text-green-700 dark:group-hover:text-green-400 truncate">{event.name}</h4>
-                      <div className="mt-2 flex justify-between text-sm text-gray-500 dark:text-gray-400">
-                        <span>Doluluk</span>
-                        <span className="font-mono">{event.currentCount} / {event.targetCount}</span>
-                      </div>
-                      <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1.5 mt-2">
+            {
+              continuingEvents.length > 0 && (
+                <div className="mt-8">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Activity className="text-green-600 dark:text-green-400" size={20} />
+                    <h3 className="text-lg font-bold text-gray-800 dark:text-white">Devam Eden Denetimler ({continuingEvents.length})</h3>
+                  </div>
+                  <div className="flex flex-col gap-4">
+                    {continuingEvents.map(event => (
+                      <div key={event.id} className="relative group w-full">
                         <div
-                          className="bg-green-500 h-1.5 rounded-full"
-                          style={{ width: `${Math.min(100, (event.currentCount / event.targetCount) * 100)}%` }}
-                        ></div>
-                      </div>
-                      <div className="mt-3 text-xs text-green-600 dark:text-green-400 font-medium flex items-center gap-1">
-                        <Play size={12} className="fill-current" />
-                        Denetime Devam Et
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+                          onClick={() => handleStartAuditClick(event.id)}
+                          className="cursor-pointer bg-white dark:bg-gray-800 border border-green-200 dark:border-green-800 p-4 sm:p-5 rounded-xl shadow-sm hover:shadow-md hover:border-green-400 dark:hover:border-green-600 transition text-left"
+                        >
+                          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                            <div className="flex-1">
+                              <h4 className="font-bold text-lg text-gray-900 dark:text-white group-hover:text-green-700 dark:group-hover:text-green-400 mb-2">{event.name}</h4>
+                              <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
+                                <span className="flex items-center gap-1">
+                                  <Clock size={14} />
+                                  {formatDate(event.startDate)}
+                                </span>
+                              </div>
+                            </div>
 
-            {/* Passive Events Section - Only Visible to Admins */}
-            {isAdmin && Object.keys(groupedPassiveEvents).length > 0 && (
-              <div className="mt-10">
-                <div className="flex items-center gap-2 mb-4">
-                  <Archive className="text-gray-500 dark:text-gray-400" size={20} />
-                  <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                    Pasif Etkinlikler
-                    <span className="text-sm font-normal text-gray-500 dark:text-gray-400">
-                      (Toplam {allPassiveEvents.length} etkinlik, son {recentPassiveEvents.length}'inin verileri gösteriliyor)
-                    </span>
-                  </h3>
-                </div>
+                            <div className="flex items-center gap-2">
+                              <span className="px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-bold rounded-full border border-green-200 dark:border-green-800 animate-pulse">
+                                AKTİF
+                              </span>
+                            </div>
+                          </div>
 
-                <div className="space-y-4">
-                  {Object.entries(groupedPassiveEvents).map(([monthYear, events]) => (
-                    <div key={monthYear} className="rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm">
-                      <button
-                        onClick={() => toggleMonth(monthYear)}
-                        className="w-full flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-750 transition border-b border-gray-200 dark:border-gray-700"
-                      >
-                        <div className="flex items-center gap-3">
-                          <Folder className="text-gray-400 dark:text-gray-500" size={20} />
-                          <span className="font-semibold text-gray-700 dark:text-gray-300 text-lg">{monthYear}</span>
-                          <span className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs px-2.5 py-0.5 rounded-full font-bold shadow-sm">
-                            {events.length}
-                          </span>
-                        </div>
-                        {expandedMonths.includes(monthYear)
-                          ? <ChevronUp className="text-gray-400" size={20} />
-                          : <ChevronDown className="text-gray-400" size={20} />
-                        }
-                      </button>
+                          {/* Calculate real count from entries */}
+                          {(() => {
+                            const entries = scannedEntries[event.id] || [];
+                            const realCount = entries.length;
 
-                      {expandedMonths.includes(monthYear) && (
-                        <div className="p-4 space-y-3 bg-white dark:bg-gray-900/30">
-                          {events.map((event) => (
-                            <div key={event.id} className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 transition hover:border-gray-300 dark:hover:border-gray-600">
-                              <div className="w-full sm:w-auto">
-                                <h4 className="font-bold text-gray-800 dark:text-gray-200 text-sm sm:text-base">{event.name}</h4>
-                                <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                                  <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded">
-                                    <Clock size={10} />
-                                    {formatDate(event.endDate)}
+                            return (
+                              <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg border border-gray-100 dark:border-gray-700">
+                                <div className="flex justify-between items-end mb-2">
+                                  <div className="flex flex-col">
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wider">Doluluk Oranı</span>
+                                    <div className="flex items-baseline gap-1">
+                                      <span className="text-xl font-bold text-gray-900 dark:text-white">{realCount}</span>
+                                      <span className="text-sm text-gray-400">/ {event.targetCount}</span>
+                                    </div>
                                   </div>
-                                  <span className="text-gray-300 dark:text-gray-600 hidden sm:inline">•</span>
-                                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                                    Hedef: {event.targetCount} <span className="mx-1">•</span> {event.currentCount}/{event.targetCount}
+                                  <div className="text-right">
+                                    <span className="text-lg font-bold text-green-600 dark:text-green-400">{Math.round((realCount / event.targetCount) * 100)}%</span>
+                                  </div>
+                                </div>
+
+                                <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2.5 overflow-hidden">
+                                  <div
+                                    className="bg-green-500 h-full rounded-full transition-all duration-500 ease-out"
+                                    style={{ width: `${Math.min(100, (realCount / event.targetCount) * 100)}%` }}
+                                  ></div>
+                                </div>
+
+                                {/* User Stats Breakdown (Horizontal) */}
+                                <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+                                  <div className="flex flex-wrap gap-2">
+                                    {(() => {
+                                      const stats = entries.reduce((acc, entry) => {
+                                        const user = entry.recordedBy || 'Bilinmiyor';
+                                        acc[user] = (acc[user] || 0) + 1;
+                                        return acc;
+                                      }, {} as Record<string, number>);
+
+                                      if (Object.keys(stats).length === 0) return <span className="text-xs text-gray-400">Henüz kayıt yok</span>;
+
+                                      return Object.entries(stats).map(([user, count]) => (
+                                        <div key={user} className="flex items-center gap-1.5 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 px-2 py-1 rounded-md text-xs shadow-sm">
+                                          <UserIcon size={12} className="text-gray-400 dark:text-gray-300" />
+                                          <span className="text-gray-600 dark:text-gray-200 font-medium">{user}:</span>
+                                          <span className="font-bold text-gray-800 dark:text-white bg-gray-100 dark:bg-gray-500 px-1.5 rounded">{count}</span>
+                                        </div>
+                                      ));
+                                    })()}
                                   </div>
                                 </div>
                               </div>
-                              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                                <button
-                                  onClick={() => setViewingEvent(event)}
-                                  className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent hover:border-gray-200 dark:hover:border-gray-600 transition"
-                                  title="Listeyi Gör"
-                                >
-                                  <Eye size={18} />
-                                </button>
-                                {isAdmin && (
-                                  <>
-                                    <button
-                                      onClick={() => onReactivateEvent(event.id)}
-                                      className="p-2 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-transparent hover:border-blue-200 dark:hover:border-blue-800 transition"
-                                      title="Etkinliği Aktif Duruma Al"
-                                    >
-                                      <RefreshCw size={18} />
-                                    </button>
-                                    <button
-                                      onClick={() => onDeleteEvent(event.id)}
-                                      className="p-2 text-red-400 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 border border-transparent hover:border-red-200 dark:hover:border-red-800 transition"
-                                      title="Etkinliği Sil"
-                                    >
-                                      <Trash2 size={18} />
-                                    </button>
-                                  </>
-                                )}
+                            );
+                          })()}
+
+                          <div className="mt-4 flex items-center justify-between pt-3 border-t border-gray-100 dark:border-gray-700">
+                            <div className="flex items-center gap-2 group/btn">
+                              <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-green-600 dark:text-green-400 group-hover/btn:scale-110 transition-transform">
+                                <Play size={16} className="fill-current" />
                               </div>
+                              <span className="font-bold text-green-700 dark:text-green-400 text-sm group-hover/btn:underline decoration-2 underline-offset-2">Denetime Devam Et</span>
                             </div>
-                          ))}
+
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setViewingEvent(event); }}
+                                className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
+                                title="Listeyi Gör"
+                              >
+                                <Eye size={18} />
+                              </button>
+                              {isAdmin && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleStartEditEvent(event); }}
+                                  className="p-2 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition"
+                                  title="Düzenle"
+                                >
+                                  <Edit size={18} />
+                                </button>
+                              )}
+                              {isAdmin && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); onDeleteEvent(event.id); }}
+                                  className="p-2 text-red-400 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
+                                  title="Sil"
+                                >
+                                  <Trash2 size={18} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  ))}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )
+            }
+
+            {/* Passive Events Section - Only Visible to Admins */}
+            {
+              isAdmin && Object.keys(groupedPassiveEvents).length > 0 && (
+                <div className="mt-10">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <Archive className="text-gray-500 dark:text-gray-400" size={20} />
+                      <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                        Pasif Etkinlikler
+                        <span className="text-sm font-normal text-gray-500 dark:text-gray-400 hidden sm:inline">
+                          (Toplam {allPassiveEvents.length} etkinlik, son {recentPassiveEvents.length}'inin verileri gösteriliyor)
+                        </span>
+                      </h3>
+                    </div>
+                    <button
+                      id="refresh-passive-btn"
+                      onClick={() => {
+                        const icon = document.getElementById('refresh-icon-spin');
+                        if (icon) {
+                          icon.classList.add('animate-spin');
+                          setTimeout(() => icon.classList.remove('animate-spin'), 1000);
+                        }
+                        onRefreshPassiveData(recentPassiveEvents.map(e => e.id));
+                      }}
+                      className="px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition flex items-center gap-2 shadow-sm"
+                      title="Listeyi Yenile"
+                    >
+                      <RefreshCw id="refresh-icon-spin" size={14} />
+                      <span className="hidden sm:inline">Yenile</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {Object.entries(groupedPassiveEvents).map(([monthYear, events]) => (
+                      <div key={monthYear} className="rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm">
+                        <button
+                          onClick={() => toggleMonth(monthYear)}
+                          className="w-full flex items-center justify-between p-2.5 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-750 transition border-b border-gray-200 dark:border-gray-700"
+                        >
+                          <div className="flex items-center gap-3">
+                            <Folder className="text-gray-400 dark:text-gray-500" size={20} />
+                            <span className="font-semibold text-gray-700 dark:text-gray-300 text-sm">{monthYear}</span>
+                            <span className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-[10px] px-2 py-0.5 rounded-full font-bold shadow-sm">
+                              {events.length}
+                            </span>
+                          </div>
+                          {expandedMonths.includes(monthYear)
+                            ? <ChevronUp className="text-gray-400" size={20} />
+                            : <ChevronDown className="text-gray-400" size={20} />
+                          }
+                        </button>
+
+                        {expandedMonths.includes(monthYear) && (
+                          <div className="p-2 space-y-1.5 bg-white dark:bg-gray-900/30">
+                            {events.map((event) => {
+                              const isRecent = recentPassiveEvents.some(re => re.id === event.id);
+
+                              // Check for unknown personnel (Veri Tabanında Bulunamadı)
+                              const eventEntries = scannedEntries[event.id] || [];
+                              const hasUnknownPersonnel = eventEntries.some(entry =>
+                                entry.citizen.name === 'Veri Tabanında' && entry.citizen.surname === 'Bulunamadı'
+                              );
+
+                              // Custom style matching user's image request
+                              // Dark mode: darker bg, green border (more visible green-600)
+                              const cardClass = isRecent
+                                ? "bg-white dark:bg-[#0f172a] border border-gray-200 dark:border-green-600 shadow-sm hover:shadow-md"
+                                : "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 opacity-75 hover:opacity-100";
+
+                              return (
+                                <div key={event.id} className={`rounded - lg p - 2 sm: p - 2 flex flex - col sm: flex - row justify - between items - start sm: items - center gap - 2 transition ${cardClass} `}>
+                                  <div className="w-full sm:w-auto">
+                                    <h4 className="font-bold text-gray-800 dark:text-white text-xs sm:text-sm flex items-center gap-2">
+                                      {event.name}
+                                      {isRecent && hasUnknownPersonnel && (
+                                        <span className="flex items-center gap-1 text-[10px] bg-[#3f1616] text-red-500 px-2 py-0.5 rounded-full border border-red-900/50 whitespace-nowrap">
+                                          <AlertTriangle size={10} />
+                                          Belirsiz Personel
+                                        </span>
+                                      )}
+                                    </h4>
+
+                                    {isRecent ? (
+                                      <div className="flex flex-wrap items-center gap-2 mt-1.5 text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">
+                                        <span className="text-gray-500 dark:text-gray-400">Tamamlandı</span>
+                                        <span className="text-gray-300 dark:text-gray-600">•</span>
+                                        <span className="font-mono">{(scannedEntries[event.id]?.length || event.currentCount)}/{event.targetCount}</span>
+                                        {event.completionDuration && (
+                                          <>
+                                            <span className="text-gray-300 dark:text-gray-600">•</span>
+                                            <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800/50 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 font-mono">
+                                              <Clock size={10} />
+                                              {event.completionDuration}
+                                            </div>
+                                          </>
+                                        )}
+                                      </div>
+                                    ) : null}
+                                  </div>
+
+                                  <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                                    {isRecent && (
+                                      <>
+                                        <button
+                                          onClick={() => setViewingEvent(event)}
+                                          className="p-1.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition"
+                                          title="Listeyi Gör"
+                                        >
+                                          <Eye size={16} />
+                                        </button>
+                                        {isAdmin && (
+                                          <>
+                                            <button
+                                              onClick={() => handleStartEditEvent(event)}
+                                              className="p-1.5 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 transition"
+                                              title="Düzenle"
+                                            >
+                                              <Edit size={16} />
+                                            </button>
+                                            <button
+                                              onClick={() => onReactivateEvent(event.id)}
+                                              className="p-1.5 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 transition"
+                                              title="İade Et"
+                                            >
+                                              <RefreshCw size={16} />
+                                            </button>
+                                            <button
+                                              onClick={() => onDeleteEvent(event.id)}
+                                              className="p-1.5 text-red-500 hover:text-red-600 dark:text-red-500 dark:hover:text-red-400 transition"
+                                              title="Sil"
+                                            >
+                                              <Trash2 size={16} />
+                                            </button>
+                                          </>
+                                        )}
+                                      </>
+                                    )}
+                                    {!isRecent && isAdmin && (
+                                      <button
+                                        onClick={() => onDeleteEvent(event.id)}
+                                        className="p-2 text-gray-300 hover:text-red-400 dark:text-gray-600 dark:hover:text-red-300 transition"
+                                        title="Etkinliği Sil"
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div >
+              )
+            }
           </>
         ) : (
           /* User List */
@@ -588,363 +1018,499 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           )
         )}
-      </main>
+      </main >
 
       {/* Modal: Add Event */}
-      {showEventModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md p-6 shadow-2xl relative">
-            <button onClick={() => setShowEventModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-              <X size={24} />
-            </button>
-
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
-              <Edit size={20} className="text-secondary-600 dark:text-secondary-400" /> Etkinlik Ekle
-            </h3>
-
-            <form onSubmit={handleCreateEvent} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Etkinlik İsmi</label>
-                <input
-                  type="text"
-                  value={newEventName}
-                  onChange={(e) => setNewEventName(e.target.value)}
-                  className="w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 border border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-secondary-500 outline-none"
-                  placeholder="Galatasaray - Fenerbahçe"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Hedef Kişi Sayısı</label>
-                <input
-                  type="number"
-                  value={newEventTarget}
-                  onChange={(e) => setNewEventTarget(parseInt(e.target.value) || 0)}
-                  className="w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 border border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-secondary-500 outline-none"
-                  min="1"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Başlangıç</label>
-                  <input
-                    type="datetime-local"
-                    value={newEventStart}
-                    onChange={(e) => setNewEventStart(e.target.value)}
-                    className="w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 border border-gray-300 dark:border-gray-600 text-sm focus:ring-2 focus:ring-secondary-500 outline-none"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Bitiş</label>
-                  <input
-                    type="datetime-local"
-                    value={newEventEnd}
-                    onChange={(e) => setNewEventEnd(e.target.value)}
-                    className="w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 border border-gray-300 dark:border-gray-600 text-sm focus:ring-2 focus:ring-secondary-500 outline-none"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="pt-4 flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowEventModal(false)}
-                  className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-bold py-3 px-4 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
-                >
-                  İptal
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 bg-secondary-600 hover:bg-secondary-700 text-white font-bold py-3 px-4 rounded-lg transition"
-                >
-                  Oluştur
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Add User */}
-      {showAddUserModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl relative">
-            <button onClick={() => setShowAddUserModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-              <X size={24} />
-            </button>
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
-              <Users size={20} className="text-secondary-600 dark:text-secondary-400" /> Kullanıcı Ekle
-            </h3>
-
-            <form onSubmit={handleCreateUser} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kullanıcı Adı</label>
-                <input
-                  type="text"
-                  value={newUserUsername}
-                  onChange={(e) => setNewUserUsername(e.target.value)}
-                  className="w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 border border-gray-200 dark:border-gray-600 focus:ring-2 focus:ring-secondary-500 outline-none"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Şifre</label>
-                <input
-                  type="text"
-                  value={newUserPassword}
-                  onChange={(e) => setNewUserPassword(e.target.value)}
-                  className="w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 border border-gray-200 dark:border-gray-600 focus:ring-2 focus:ring-secondary-500 outline-none"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Yetki Seviyesi</label>
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={newUserRoles.includes(UserRole.PERSONNEL)}
-                      onChange={() => toggleNewUserRole(UserRole.PERSONNEL)}
-                      className="w-5 h-5 text-secondary-600 rounded focus:ring-secondary-500"
-                    />
-                    <span className="text-sm text-gray-700 dark:text-gray-300">Kullanıcı</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={newUserRoles.includes(UserRole.ADMIN)}
-                      onChange={() => toggleNewUserRole(UserRole.ADMIN)}
-                      className="w-5 h-5 text-secondary-600 rounded focus:ring-secondary-500"
-                    />
-                    <span className="text-sm text-gray-700 dark:text-gray-300">Yönetici</span>
-                  </label>
-                </div>
-              </div>
-
-              <div className="pt-4 flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowAddUserModal(false)}
-                  className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-bold py-3 px-4 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
-                >
-                  İptal
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 bg-secondary-600 hover:bg-secondary-700 text-white font-bold py-3 px-4 rounded-lg transition"
-                >
-                  Ekle
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Edit User Role */}
-      {editingUser && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl relative">
-            <button onClick={() => setEditingUser(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-              <X size={24} />
-            </button>
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
-              <UserCog size={20} className="text-blue-600 dark:text-blue-400" /> Yetki Düzenle
-            </h3>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kullanıcı Adı</label>
-                <input
-                  type="text"
-                  value={editingUser.username}
-                  disabled
-                  className="w-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded-lg px-4 py-2 border border-gray-200 dark:border-gray-600"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Yetki Seviyesi</label>
-                <div className="flex gap-4">
-                  <button
-                    onClick={() => toggleEditUserRole(UserRole.PERSONNEL)}
-                    className={`flex-1 py-3 px-4 rounded-lg border flex items-center justify-center gap-2 transition ${editingUser.roles.includes(UserRole.PERSONNEL)
-                      ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
-                      : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600'
-                      }`}
-                  >
-                    {editingUser.roles.includes(UserRole.PERSONNEL) ? <CheckCircle size={18} /> : <div className="w-4.5 h-4.5 border border-gray-300 rounded" />}
-                    Personel
-                  </button>
-
-                  <button
-                    onClick={() => toggleEditUserRole(UserRole.ADMIN)}
-                    className={`flex-1 py-3 px-4 rounded-lg border flex items-center justify-center gap-2 transition ${editingUser.roles.includes(UserRole.ADMIN)
-                      ? 'bg-purple-50 dark:bg-purple-900/30 border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300'
-                      : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600'
-                      }`}
-                  >
-                    {editingUser.roles.includes(UserRole.ADMIN) ? <ShieldCheck size={18} /> : <div className="w-4.5 h-4.5 border border-gray-300 rounded" />}
-                    Yönetici
-                  </button>
-                </div>
-              </div>
-
-              <button
-                onClick={handleSaveUserRole}
-                className="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition"
-              >
-                Kaydet
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Password Reset */}
-      {showPasswordReset && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl relative">
-            <button onClick={() => setShowPasswordReset(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-              <X size={24} />
-            </button>
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
-              <Key size={20} className="text-gray-600 dark:text-gray-400" /> Şifre Sıfırla
-            </h3>
-
-            <div className="space-y-4">
-              <p className="text-sm text-gray-600 dark:text-gray-300">
-                <strong>{showPasswordReset.username}</strong> için yeni şifre belirleyin.
-              </p>
-
-              <input
-                type="text"
-                value={tempPassword}
-                onChange={(e) => setTempPassword(e.target.value)}
-                placeholder="Yeni şifre"
-                className="w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 border border-gray-200 dark:border-gray-600 focus:ring-2 focus:ring-primary-500 outline-none"
-              />
-
-              <button
-                onClick={handleSavePassword}
-                disabled={!tempPassword}
-                className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-xl transition disabled:opacity-50"
-              >
-                Güncelle
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Self Password Change */}
-      {showSelfPasswordChange && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl relative">
-            <button onClick={() => setShowSelfPasswordChange(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-              <X size={24} />
-            </button>
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
-              <Key size={20} className="text-blue-600 dark:text-blue-400" /> Şifremi Değiştir
-            </h3>
-
-            <form onSubmit={handleSaveSelfPassword} className="space-y-4">
-              <input
-                type="text"
-                value={selfNewPassword}
-                onChange={(e) => setSelfNewPassword(e.target.value)}
-                placeholder="Yeni şifreniz"
-                className="w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 border border-gray-200 dark:border-gray-600 focus:ring-2 focus:ring-primary-500 outline-none"
-                required
-              />
-
-              <button
-                type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition"
-              >
-                Güncelle
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Scanned List Viewer */}
-      {viewingEvent && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
-            <div className="flex justify-between items-center p-6 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50 rounded-t-2xl">
-              <div>
-                <h2 className="text-xl font-bold text-gray-900 dark:text-white">{viewingEvent.name}</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Katılımcı Listesi</p>
-              </div>
-              <button
-                onClick={() => setViewingEvent(null)}
-                className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition"
-              >
+      {
+        showEventModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md p-6 shadow-2xl relative">
+              <button onClick={() => setShowEventModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                 <X size={24} />
               </button>
-            </div>
 
-            <div className="flex-1 overflow-auto p-0">
-              <table className="w-full text-left text-xs sm:text-sm">
-                <thead className="bg-gray-50 dark:bg-gray-900/30 border-b border-gray-200 dark:border-gray-700 sticky top-0">
-                  <tr>
-                    <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400">NO</th>
-                    <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400">TC</th>
-                    <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400">Ad Soyad</th>
-                    <th className="hidden sm:table-cell px-6 py-3 font-medium text-gray-500 dark:text-gray-400">Durum</th>
-                    <th className="hidden sm:table-cell px-6 py-3 font-medium text-gray-500 dark:text-gray-400">Saat</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {scannedEntries[viewingEvent.id]?.map((entry, index) => {
-                    const status = checkWorkStatus(entry.citizen.validityDate);
-                    return (
-                      <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                        <td className="px-4 sm:px-6 py-3 text-gray-500 dark:text-gray-400">{index + 1}</td>
-                        <td className="px-4 sm:px-6 py-3 font-mono text-gray-900 dark:text-gray-200">{entry.citizen.tc}</td>
-                        <td className="px-4 sm:px-6 py-3 font-medium text-gray-900 dark:text-gray-200">{entry.citizen.name} {entry.citizen.surname}</td>
-                        <td className="hidden sm:table-cell px-6 py-3">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${status.bg} ${status.color}`}>
-                            {status.text}
-                          </span>
-                        </td>
-                        <td className="hidden sm:table-cell px-6 py-3 text-gray-500 dark:text-gray-400">{entry.timestamp}</td>
-                      </tr>
-                    )
-                  })}
-                  {(!scannedEntries[viewingEvent.id] || scannedEntries[viewingEvent.id].length === 0) && (
-                    <tr>
-                      <td colSpan={5} className="px-6 py-8 text-center text-gray-400 dark:text-gray-500">
-                        Henüz kayıt bulunmamaktadır.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+                <Edit size={20} className="text-secondary-600 dark:text-secondary-400" />
+                {editingEvent ? 'Etkinlik Düzenle' : 'Etkinlik Ekle'}
+              </h3>
 
-            <div className="p-6 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50 rounded-b-2xl flex justify-end">
-              <button
-                onClick={handleExportExcel}
-                disabled={!scannedEntries[viewingEvent.id] || scannedEntries[viewingEvent.id].length === 0}
-                className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-6 rounded-xl transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Download size={18} /> Excel'e Aktar
-              </button>
+              <form onSubmit={handleSaveEvent} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Etkinlik İsmi</label>
+                  <input
+                    type="text"
+                    value={newEventName}
+                    onChange={(e) => setNewEventName(e.target.value)}
+                    className="w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 border border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-secondary-500 outline-none"
+                    placeholder="Galatasaray - Fenerbahçe"
+                    required
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 mb-4">
+                  <input
+                    type="checkbox"
+                    id="multiCompany"
+                    checked={isMultiCompany}
+                    onChange={(e) => {
+                      setIsMultiCompany(e.target.checked);
+                      if (e.target.checked && companyTargets.length === 0) {
+                        setCompanyCountInput(1);
+                        setCompanyTargets([{ name: '', count: 0 }]);
+                      }
+                    }}
+                    className="w-4 h-4 text-secondary-600 rounded focus:ring-secondary-500 border-gray-300 dark:border-gray-600"
+                  />
+                  <label htmlFor="multiCompany" className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer select-none">
+                    Birden fazla şirket hizmet veriyor mu?
+                  </label>
+                </div>
+
+                {!isMultiCompany ? (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Hedef Kişi Sayısı</label>
+                    <input
+                      type="number"
+                      value={newEventTarget}
+                      onChange={(e) => setNewEventTarget(parseInt(e.target.value) || 0)}
+                      className="w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 border border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-secondary-500 outline-none"
+                      min="1"
+                      required={!isMultiCompany}
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-3 p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg border border-gray-200 dark:border-gray-600">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1 uppercase">Şirket Sayısı</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="20"
+                        value={companyCountInput}
+                        onChange={(e) => setCompanyCountInput(parseInt(e.target.value) || 1)}
+                        className="w-full bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded px-3 py-2 border border-gray-300 dark:border-gray-600 text-sm focus:ring-2 focus:ring-secondary-500 outline-none"
+                      />
+                    </div>
+
+                    <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
+                      {companyTargets.map((comp, idx) => (
+                        <div key={idx} className="flex gap-2 items-center">
+                          <div className="flex-1">
+                            <input
+                              type="text"
+                              placeholder={`Şirket ${idx + 1} `}
+                              value={comp.name}
+                              onChange={(e) => {
+                                const newArr = [...companyTargets];
+                                newArr[idx] = { ...newArr[idx], name: e.target.value };
+                                setCompanyTargets(newArr);
+                              }}
+                              className="w-full bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded px-3 py-2 border border-gray-300 dark:border-gray-600 text-sm focus:ring-2 focus:ring-secondary-500 outline-none"
+                              required
+                            />
+                          </div>
+                          <div className="w-24">
+                            <input
+                              type="number"
+                              placeholder="Hedef"
+                              min="0"
+                              value={comp.count}
+                              onChange={(e) => {
+                                const newArr = [...companyTargets];
+                                newArr[idx] = { ...newArr[idx], count: parseInt(e.target.value) || 0 };
+                                setCompanyTargets(newArr);
+                              }}
+                              className="w-full bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded px-3 py-2 border border-gray-300 dark:border-gray-600 text-sm focus:ring-2 focus:ring-secondary-500 outline-none"
+                              required
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="pt-2 border-t border-gray-200 dark:border-gray-600 flex justify-between items-center">
+                      <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Toplam Hedef:</span>
+                      <span className="text-lg font-bold text-secondary-600 dark:text-secondary-400">
+                        {companyTargets.reduce((sum, t) => sum + (t.count || 0), 0)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Başlangıç</label>
+                    <input
+                      type="datetime-local"
+                      value={newEventStart}
+                      onChange={(e) => setNewEventStart(e.target.value)}
+                      className="w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 border border-gray-300 dark:border-gray-600 text-sm focus:ring-2 focus:ring-secondary-500 outline-none"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Bitiş</label>
+                    <input
+                      type="datetime-local"
+                      value={newEventEnd}
+                      onChange={(e) => setNewEventEnd(e.target.value)}
+                      className="w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 border border-gray-300 dark:border-gray-600 text-sm focus:ring-2 focus:ring-secondary-500 outline-none"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-4 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowEventModal(false)}
+                    className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-bold py-3 px-4 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
+                  >
+                    İptal
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 bg-secondary-600 hover:bg-secondary-700 text-white font-bold py-3 px-4 rounded-lg transition"
+                  >
+                    {editingEvent ? 'Güncelle' : 'Oluştur'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+
+      {/* Modal: Add User */}
+      {
+        showAddUserModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl relative">
+              <button onClick={() => setShowAddUserModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                <X size={24} />
+              </button>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+                <Users size={20} className="text-secondary-600 dark:text-secondary-400" /> Kullanıcı Ekle
+              </h3>
+
+              <form onSubmit={handleCreateUser} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kullanıcı Adı</label>
+                  <input
+                    type="text"
+                    value={newUserUsername}
+                    onChange={(e) => setNewUserUsername(e.target.value)}
+                    className="w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 border border-gray-200 dark:border-gray-600 focus:ring-2 focus:ring-secondary-500 outline-none"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Şifre</label>
+                  <input
+                    type="text"
+                    value={newUserPassword}
+                    onChange={(e) => setNewUserPassword(e.target.value)}
+                    className="w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 border border-gray-200 dark:border-gray-600 focus:ring-2 focus:ring-secondary-500 outline-none"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Yetki Seviyesi</label>
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newUserRoles.includes(UserRole.PERSONNEL)}
+                        onChange={() => toggleNewUserRole(UserRole.PERSONNEL)}
+                        className="w-5 h-5 text-secondary-600 rounded focus:ring-secondary-500"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Kullanıcı</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newUserRoles.includes(UserRole.ADMIN)}
+                        onChange={() => toggleNewUserRole(UserRole.ADMIN)}
+                        className="w-5 h-5 text-secondary-600 rounded focus:ring-secondary-500"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Yönetici</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="pt-4 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddUserModal(false)}
+                    className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-bold py-3 px-4 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
+                  >
+                    İptal
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 bg-secondary-600 hover:bg-secondary-700 text-white font-bold py-3 px-4 rounded-lg transition"
+                  >
+                    Ekle
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Modal: Edit User Role */}
+      {
+        editingUser && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl relative">
+              <button onClick={() => setEditingUser(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                <X size={24} />
+              </button>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+                <UserCog size={20} className="text-blue-600 dark:text-blue-400" /> Yetki Düzenle
+              </h3>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kullanıcı Adı</label>
+                  <input
+                    type="text"
+                    value={editingUser.username}
+                    disabled
+                    className="w-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded-lg px-4 py-2 border border-gray-200 dark:border-gray-600"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Yetki Seviyesi</label>
+                  <div className="flex gap-4">
+                    <button
+                      onClick={() => toggleEditUserRole(UserRole.PERSONNEL)}
+                      className={`flex - 1 py - 3 px - 4 rounded - lg border flex items - center justify - center gap - 2 transition ${editingUser.roles.includes(UserRole.PERSONNEL)
+                        ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
+                        : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600'
+                        } `}
+                    >
+                      {editingUser.roles.includes(UserRole.PERSONNEL) ? <CheckCircle size={18} /> : <div className="w-4.5 h-4.5 border border-gray-300 rounded" />}
+                      Personel
+                    </button>
+
+                    <button
+                      onClick={() => toggleEditUserRole(UserRole.ADMIN)}
+                      className={`flex - 1 py - 3 px - 4 rounded - lg border flex items - center justify - center gap - 2 transition ${editingUser.roles.includes(UserRole.ADMIN)
+                        ? 'bg-purple-50 dark:bg-purple-900/30 border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300'
+                        : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600'
+                        } `}
+                    >
+                      {editingUser.roles.includes(UserRole.ADMIN) ? <ShieldCheck size={18} /> : <div className="w-4.5 h-4.5 border border-gray-300 rounded" />}
+                      Yönetici
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleSaveUserRole}
+                  className="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition"
+                >
+                  Kaydet
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Modal: Password Reset */}
+      {
+        showPasswordReset && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl relative">
+              <button onClick={() => setShowPasswordReset(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                <X size={24} />
+              </button>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+                <Key size={20} className="text-gray-600 dark:text-gray-400" /> Şifre Sıfırla
+              </h3>
+
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                  <strong>{showPasswordReset.username}</strong> için yeni şifre belirleyin.
+                </p>
+
+                <input
+                  type="text"
+                  value={tempPassword}
+                  onChange={(e) => setTempPassword(e.target.value)}
+                  placeholder="Yeni şifre"
+                  className="w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 border border-gray-200 dark:border-gray-600 focus:ring-2 focus:ring-primary-500 outline-none"
+                />
+
+                <button
+                  onClick={handleSavePassword}
+                  disabled={!tempPassword}
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-xl transition disabled:opacity-50"
+                >
+                  Güncelle
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Modal: Self Password Change */}
+      {
+        showSelfPasswordChange && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl relative">
+              <button onClick={() => setShowSelfPasswordChange(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                <X size={24} />
+              </button>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+                <Key size={20} className="text-blue-600 dark:text-blue-400" /> Şifremi Değiştir
+              </h3>
+
+              <form onSubmit={handleSaveSelfPassword} className="space-y-4">
+                <input
+                  type="text"
+                  value={selfNewPassword}
+                  onChange={(e) => setSelfNewPassword(e.target.value)}
+                  placeholder="Yeni şifreniz"
+                  className="w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 border border-gray-200 dark:border-gray-600 focus:ring-2 focus:ring-primary-500 outline-none"
+                  required
+                />
+
+                <button
+                  type="submit"
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition"
+                >
+                  Güncelle
+                </button>
+              </form>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Modal: Scanned List Viewer */}
+      {
+        viewingEvent && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
+              <div className="flex justify-between items-center p-6 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50 rounded-t-2xl">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">{viewingEvent.name}</h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Katılımcı Listesi</p>
+                </div>
+                <button
+                  onClick={() => setViewingEvent(null)}
+                  className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              {/* Statistics Section */}
+              <div className="px-6 py-4 bg-gray-50 dark:bg-gray-900/30 border-b border-gray-100 dark:border-gray-700">
+                <h4 className="text-xs font-semibold text-gray-400 dark:text-gray-500 mb-3 uppercase tracking-wider">İSTATİSTİKLER</h4>
+                <div className="flex flex-wrap gap-3">
+                  {/* Uncertain Stats */}
+                  {(() => {
+                    const currentEntries = scannedEntries[viewingEvent.id] || [];
+                    const uncertainCount = currentEntries.filter(e => e?.citizen?.name === 'Veri Tabanında' && e?.citizen?.surname === 'Bulunamadı').length;
+
+                    if (uncertainCount > 0) {
+                      return (
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 text-xs sm:text-sm font-medium">
+                          <AlertCircle size={14} />
+                          <span>Belirsiz</span>
+                          <span className="bg-orange-100 dark:bg-orange-800 px-1.5 py-0.5 rounded text-xs font-bold">{uncertainCount}</span>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+
+                  {/* User Stats */}
+                  {(() => {
+                    const currentEntries = scannedEntries[viewingEvent.id] || [];
+                    const userStats = currentEntries.reduce((acc, entry) => {
+                      if (!entry) return acc;
+                      const user = entry.recordedBy || 'Bilinmiyor';
+                      acc[user] = (acc[user] || 0) + 1;
+                      return acc;
+                    }, {} as Record<string, number>);
+
+                    return Object.entries(userStats).map(([username, count]) => (
+                      <div key={username} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-xs sm:text-sm font-medium">
+                        <UserIcon size={14} />
+                        <span>{username}</span>
+                        <span className="bg-blue-100 dark:bg-blue-800 px-1.5 py-0.5 rounded text-xs font-bold">{count}</span>
+                      </div>
+                    ));
+                  })()}
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-auto p-0">
+                <table className="w-full text-left text-xs sm:text-sm">
+                  <thead className="bg-gray-50 dark:bg-gray-900/30 border-b border-gray-200 dark:border-gray-700 sticky top-0">
+                    <tr>
+                      <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400">NO</th>
+                      <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400">TC</th>
+                      <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400">Ad Soyad</th>
+                      <th className="hidden sm:table-cell px-6 py-3 font-medium text-gray-500 dark:text-gray-400">Durum</th>
+                      <th className="hidden sm:table-cell px-6 py-3 font-medium text-gray-500 dark:text-gray-400">Saat</th>
+                      <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">Kaydeden</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                    {scannedEntries[viewingEvent.id]?.map((entry, index) => {
+                      if (!entry || !entry.citizen) return null;
+                      const status = checkWorkStatus(entry.citizen.validityDate);
+                      return (
+                        <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                          <td className="px-4 sm:px-6 py-3 text-gray-500 dark:text-gray-400">{index + 1}</td>
+                          <td className="px-4 sm:px-6 py-3 font-mono text-gray-900 dark:text-gray-200">{entry.citizen.tc}</td>
+                          <td className="px-4 sm:px-6 py-3 font-medium text-gray-900 dark:text-gray-200">{entry.citizen.name} {entry.citizen.surname}</td>
+                          <td className="hidden sm:table-cell px-6 py-3">
+                            <span className={`inline - flex items - center px - 2 py - 0.5 rounded text - [10px] font - bold ${status.bg} ${status.color} `}>
+                              {status.text}
+                            </span>
+                          </td>
+                          <td className="hidden sm:table-cell px-6 py-3 text-gray-500 dark:text-gray-400">{entry.timestamp}</td>
+                          <td className="px-6 py-3 text-gray-500 dark:text-gray-400 font-medium">{entry.recordedBy || '-'}</td>
+                        </tr>
+                      )
+                    })}
+                    {(!scannedEntries[viewingEvent.id] || scannedEntries[viewingEvent.id].length === 0) && (
+                      <tr>
+                        <td colSpan={5} className="px-6 py-8 text-center text-gray-400 dark:text-gray-500">
+                          Henüz kayıt bulunmamaktadır.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="p-6 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50 rounded-b-2xl flex justify-end">
+                <button
+                  onClick={handleExportExcel}
+                  disabled={!scannedEntries[viewingEvent.id] || scannedEntries[viewingEvent.id].length === 0}
+                  className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-6 rounded-xl transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Download size={18} /> Excel'e Aktar
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+    </div >
   );
 };
 
