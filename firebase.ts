@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -17,5 +17,17 @@ import { getApps, getApp } from 'firebase/app';
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
 const db = getFirestore(app);
+
+try {
+  enableIndexedDbPersistence(db).catch((err) => {
+    if (err.code == 'failed-precondition') {
+      console.warn('Persistence failed: Multiple tabs open');
+    } else if (err.code == 'unimplemented') {
+      console.warn('Persistence not supported by browser');
+    }
+  });
+} catch (e) {
+  console.warn("Persistence setup error:", e);
+}
 
 export { db };

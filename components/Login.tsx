@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { User, UserRole } from '../types';
+import { db } from '../firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { Lock, User as UserIcon, Settings, Eye, EyeOff, BookOpen, X, HelpCircle, AlertCircle, CheckCircle, Info, Sun, Moon } from 'lucide-react';
 
 interface LoginProps {
@@ -8,9 +10,10 @@ interface LoginProps {
   isDarkMode: boolean;
   onToggleTheme: () => void;
   onRefreshUsers?: () => Promise<void>;
+  isLoading?: boolean;
 }
 
-const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme, onRefreshUsers }) => {
+const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme, onRefreshUsers, isLoading = false }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -19,35 +22,55 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
   const [showManual, setShowManual] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const [isChecking, setIsChecking] = useState(false);
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setIsChecking(true);
 
     console.log('🔐 Login attempt:', {
       username,
-      password,
-      totalUsers: users.length,
       loginType
     });
 
-    // Convert to strings to handle both string and number types from Firestore
-    const user = users.find(u =>
-      String(u.username) === String(username) &&
-      String(u.password) === String(password)
-    );
+    try {
+      const cleanUsername = username.trim();
+      const cleanPassword = password.trim();
 
-    if (user) {
-      console.log('✅ User found:', user.username, user.fullName);
-      if (loginType === 'ADMIN' && !user.roles.includes(UserRole.ADMIN)) {
-        console.log('❌ Admin access denied for user:', user.username);
-        setError('Bu hesaba yönetici girişi yetkisi verilmemiştir.');
-        return;
+      // 1. Try to find user in the already loaded list (fastest)
+      let user = users.find(u =>
+        String(u.username).trim() === cleanUsername &&
+        String(u.password).trim() === cleanPassword
+      );
+
+      /* Fallback query removed for speed optimization - users are already live-synced */
+      if (!user && users.length === 0 && !isLoading) {
+        // Only query if local list is empty and not loading (rare edge case)
+        console.log('⚠️ Local user list empty, trying direct query...');
+        const q = query(collection(db, 'users'), where('username', '==', cleanUsername), where('password', '==', cleanPassword));
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          user = snapshot.docs[0].data() as User;
+        }
       }
-      onLogin(user);
-    } else {
-      console.log('❌ Login failed - user not found');
-      console.log('📊 Available users:', users.map(u => ({ username: u.username, id: u.id })));
-      setError('Kullanıcı adı veya şifre hatalı.');
+
+      if (user) {
+        if (loginType === 'ADMIN' && !user.roles.includes(UserRole.ADMIN)) {
+          console.log('❌ Admin access denied for user:', user.username);
+          setError('Bu hesaba yönetici girişi yetkisi verilmemiştir.');
+          return;
+        }
+        onLogin(user);
+      } else {
+        console.log('❌ Login failed - user not found');
+        setError('Kullanıcı adı veya şifre hatalı.');
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      setError('Giriş sırasında bir hata oluştu.');
+    } finally {
+      setIsChecking(false);
     }
   };
 
@@ -171,18 +194,38 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
           {loginType === 'USER' ? (
             <button
               type="submit"
-              className="w-full bg-primary-600 hover:bg-primary-700 text-white font-semibold py-3 px-4 rounded-xl transition duration-200 flex items-center justify-center gap-2"
+              disabled={isChecking}
+              className={`w-full bg-primary-600 hover:bg-primary-700 text-white font-semibold py-3 px-4 rounded-xl transition duration-200 flex items-center justify-center gap-2 ${isChecking ? 'opacity-70 cursor-wait' : ''}`}
             >
-              <UserIcon size={20} />
-              Kullanıcı Girişi Yap
+              {isChecking ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Giriş Yapılıyor...
+                </>
+              ) : (
+                <>
+                  <UserIcon size={20} />
+                  Kullanıcı Girişi Yap
+                </>
+              )}
             </button>
           ) : (
             <button
               type="submit"
-              className="w-full bg-secondary-600 hover:bg-secondary-500 text-white font-semibold py-3 px-4 rounded-xl transition duration-200 flex items-center justify-center gap-2"
+              disabled={isChecking}
+              className={`w-full bg-secondary-600 hover:bg-secondary-500 text-white font-semibold py-3 px-4 rounded-xl transition duration-200 flex items-center justify-center gap-2 ${isChecking ? 'opacity-70 cursor-wait' : ''}`}
             >
-              <Settings size={20} />
-              Yönetici Girişi Yap
+              {isChecking ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Giriş Yapılıyor...
+                </>
+              ) : (
+                <>
+                  <Settings size={20} />
+                  Yönetici Girişi Yap
+                </>
+              )}
             </button>
           )}
         </form>
