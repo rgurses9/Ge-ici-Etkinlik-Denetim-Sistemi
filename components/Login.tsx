@@ -30,7 +30,11 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
       loginType
     });
 
-    const user = users.find(u => u.username === username && u.password === password);
+    // Convert to strings to handle both string and number types from Firestore
+    const user = users.find(u =>
+      String(u.username) === String(username) &&
+      String(u.password) === String(password)
+    );
 
     if (user) {
       console.log('✅ User found:', user.username, user.fullName);
