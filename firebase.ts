@@ -11,19 +11,10 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
+import { getApps, getApp } from 'firebase/app';
 
-let app;
-try {
-  app = initializeApp(firebaseConfig);
-} catch (error: any) {
-  // If Firebase app already exists during HMR, use the existing one
-  if (error.code === 'app/duplicate-app') {
-    const { getApp } = await import('firebase/app');
-    app = getApp();
-  } else {
-    throw error;
-  }
-}
+// Check if Firebase app already exists (prevents duplicate app error during HMR)
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
 const db = getFirestore(app);
 
