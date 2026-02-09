@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Event, User, UserRole, ScanEntry } from '../types';
-import { Plus, Users, Calendar, Play, LogOut, Eye, Trash2, Edit, UserCog, Key, ShieldCheck, User as UserIcon, Activity, Archive, Download, RefreshCw, Clock, Wifi, X, CheckCircle, Sun, Moon } from 'lucide-react';
+import { Plus, Users, Calendar, Play, LogOut, Eye, Trash2, Edit, UserCog, Key, ShieldCheck, User as UserIcon, Activity, Archive, Download, RefreshCw, Clock, Wifi, X, CheckCircle, Sun, Moon, Folder, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface AdminDashboardProps {
   currentUser: User;
@@ -36,6 +36,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [activeTab, setActiveTab] = useState<'EVENTS' | 'USERS'>('EVENTS');
   const [showEventModal, setShowEventModal] = useState(false);
   const [viewingEvent, setViewingEvent] = useState<Event | null>(null);
+
+  // Accordion state for passive events
+  const [expandedMonths, setExpandedMonths] = useState<string[]>([]);
 
   // New Event Form State
   const [newEventName, setNewEventName] = useState('');
@@ -216,10 +219,35 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const continuingEvents = events.filter(e => e.status === 'ACTIVE' && e.currentCount > 0 && e.currentCount < e.targetCount);
   const activeEvents = events.filter(e => e.status === 'ACTIVE');
-  const passiveEvents = events
-    .filter(e => e.status === 'PASSIVE')
-    .sort((a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime()) // En yeni ilk
-    .slice(0, 35); // Sadece son 35 etkinlik
+  // --- Passive Events Logic ---
+  const allPassiveEvents = events.filter(e => e.status === 'PASSIVE')
+    .sort((a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime());
+
+  const recentPassiveEvents = allPassiveEvents.slice(0, 35);
+
+  // Group by "Month Year" (e.g., "Şubat 2026")
+  const groupedPassiveEvents = recentPassiveEvents.reduce((acc, event) => {
+    const date = new Date(event.endDate);
+    // Capitalize first letter of month
+    const monthName = date.toLocaleString('tr-TR', { month: 'long' });
+    const formattedMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+    const year = date.getFullYear();
+    const key = `${formattedMonth} ${year}`;
+
+    if (!acc[key]) {
+      acc[key] = [];
+    }
+    acc[key].push(event);
+    return acc;
+  }, {} as Record<string, Event[]>);
+
+  const toggleMonth = (month: string) => {
+    setExpandedMonths(prev =>
+      prev.includes(month)
+        ? prev.filter(m => m !== month)
+        : [...prev, month]
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col transition-colors duration-200">
@@ -424,54 +452,86 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             )}
 
             {/* Passive Events Section - Only Visible to Admins */}
-            {isAdmin && passiveEvents.length > 0 && (
-              <div className="mt-8">
+            {isAdmin && Object.keys(groupedPassiveEvents).length > 0 && (
+              <div className="mt-10">
                 <div className="flex items-center gap-2 mb-4">
                   <Archive className="text-gray-500 dark:text-gray-400" size={20} />
-                  <h3 className="text-lg font-bold text-gray-800 dark:text-white">Pasif Etkinlikler</h3>
+                  <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                    Pasif Etkinlikler
+                    <span className="text-sm font-normal text-gray-500 dark:text-gray-400">
+                      (Toplam {allPassiveEvents.length} etkinlik, son {recentPassiveEvents.length}'inin verileri gösteriliyor)
+                    </span>
+                  </h3>
                 </div>
-                <div className="space-y-3 opacity-80 hover:opacity-100 transition">
-                  {passiveEvents.map(event => (
-                    <div key={event.id} className="bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                      <div className="w-full sm:w-auto">
-                        <h4 className="font-bold text-gray-700 dark:text-gray-300">{event.name}</h4>
-                        <div className="flex flex-wrap items-center gap-2 mt-1">
-                          <p className="text-xs text-gray-500 dark:text-gray-400">Tamamlandı • {event.currentCount}/{event.targetCount}</p>
-                          {event.completionDuration && (
-                            <p className="text-xs text-gray-600 dark:text-gray-400 font-mono flex items-center gap-1 bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded">
-                              <Clock size={10} /> {event.completionDuration}
-                            </p>
-                          )}
+
+                <div className="space-y-4">
+                  {Object.entries(groupedPassiveEvents).map(([monthYear, events]) => (
+                    <div key={monthYear} className="rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm">
+                      <button
+                        onClick={() => toggleMonth(monthYear)}
+                        className="w-full flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-750 transition border-b border-gray-200 dark:border-gray-700"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Folder className="text-gray-400 dark:text-gray-500" size={20} />
+                          <span className="font-semibold text-gray-700 dark:text-gray-300 text-lg">{monthYear}</span>
+                          <span className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs px-2.5 py-0.5 rounded-full font-bold shadow-sm">
+                            {events.length}
+                          </span>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                        <button
-                          onClick={() => setViewingEvent(event)}
-                          className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-                          title="Listeyi Gör"
-                        >
-                          <Eye size={20} />
-                        </button>
-                        {isAdmin && (
-                          <>
-                            <button
-                              onClick={() => onReactivateEvent(event.id)}
-                              className="px-3 py-2 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 font-medium text-sm flex items-center gap-1.5 border border-blue-200 dark:border-blue-800"
-                              title="Etkinliği Aktif Duruma Al"
-                            >
-                              <RefreshCw size={16} />
-                              İade
-                            </button>
-                            <button
-                              onClick={() => onDeleteEvent(event.id)}
-                              className="p-2 text-red-400 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
-                              title="Etkinliği Sil"
-                            >
-                              <Trash2 size={20} />
-                            </button>
-                          </>
-                        )}
-                      </div>
+                        {expandedMonths.includes(monthYear)
+                          ? <ChevronUp className="text-gray-400" size={20} />
+                          : <ChevronDown className="text-gray-400" size={20} />
+                        }
+                      </button>
+
+                      {expandedMonths.includes(monthYear) && (
+                        <div className="p-4 space-y-3 bg-white dark:bg-gray-900/30">
+                          {events.map((event) => (
+                            <div key={event.id} className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 transition hover:border-gray-300 dark:hover:border-gray-600">
+                              <div className="w-full sm:w-auto">
+                                <h4 className="font-bold text-gray-800 dark:text-gray-200 text-sm sm:text-base">{event.name}</h4>
+                                <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                                  <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded">
+                                    <Clock size={10} />
+                                    {formatDate(event.endDate)}
+                                  </div>
+                                  <span className="text-gray-300 dark:text-gray-600 hidden sm:inline">•</span>
+                                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                                    Hedef: {event.targetCount} <span className="mx-1">•</span> {event.currentCount}/{event.targetCount}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                                <button
+                                  onClick={() => setViewingEvent(event)}
+                                  className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent hover:border-gray-200 dark:hover:border-gray-600 transition"
+                                  title="Listeyi Gör"
+                                >
+                                  <Eye size={18} />
+                                </button>
+                                {isAdmin && (
+                                  <>
+                                    <button
+                                      onClick={() => onReactivateEvent(event.id)}
+                                      className="p-2 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-transparent hover:border-blue-200 dark:hover:border-blue-800 transition"
+                                      title="Etkinliği Aktif Duruma Al"
+                                    >
+                                      <RefreshCw size={18} />
+                                    </button>
+                                    <button
+                                      onClick={() => onDeleteEvent(event.id)}
+                                      className="p-2 text-red-400 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 border border-transparent hover:border-red-200 dark:hover:border-red-800 transition"
+                                      title="Etkinliği Sil"
+                                    >
+                                      <Trash2 size={18} />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
