@@ -258,7 +258,9 @@ const App: React.FC = () => {
   const handleUpdateEvent = async (updatedEvent: Event) => {
     try {
       const eventRef = doc(db, 'events', updatedEvent.id);
-      await updateDoc(eventRef, { ...updatedEvent });
+      // Firestore does not like 'undefined'. We clean the object.
+      const cleanEvent = JSON.parse(JSON.stringify(updatedEvent));
+      await setDoc(eventRef, cleanEvent, { merge: true });
     } catch (e) {
       console.error("Error updating event: ", e);
     }
