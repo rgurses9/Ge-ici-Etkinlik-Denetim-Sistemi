@@ -1,5 +1,9 @@
-import { initializeApp } from "firebase/app";
-import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
+import { initializeApp, getApps } from "firebase/app";
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager
+} from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -11,23 +15,14 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
-import { getApps, getApp } from 'firebase/app';
-
 // Check if Firebase app already exists (prevents duplicate app error during HMR)
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+const app = getApps().length > 0 ? getApps()[0] : initializeApp(firebaseConfig);
 
-const db = getFirestore(app);
-
-try {
-  enableIndexedDbPersistence(db).catch((err) => {
-    if (err.code == 'failed-precondition') {
-      console.warn('Persistence failed: Multiple tabs open');
-    } else if (err.code == 'unimplemented') {
-      console.warn('Persistence not supported by browser');
-    }
-  });
-} catch (e) {
-  console.warn("Persistence setup error:", e);
-}
+// Modern way to enable persistence
+const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager()
+  })
+});
 
 export { db };

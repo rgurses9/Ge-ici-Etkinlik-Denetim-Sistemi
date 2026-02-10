@@ -57,7 +57,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // New Event Form State
   const [newEventName, setNewEventName] = useState('');
-  const [newEventTarget, setNewEventTarget] = useState(5);
+  const [newEventTarget, setNewEventTarget] = useState<number | string>(5);
   const [newEventStart, setNewEventStart] = useState('');
   const [newEventEnd, setNewEventEnd] = useState('');
 
@@ -127,7 +127,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const updatedEvent: Event = {
         ...editingEvent,
         name: newEventName,
-        targetCount: isMultiCompany ? companyTargets.reduce((sum, t) => sum + (t.count || 0), 0) : newEventTarget,
+        targetCount: isMultiCompany ? companyTargets.reduce((sum, t) => sum + (t.count || 0), 0) : Number(newEventTarget),
         startDate: newEventStart,
         endDate: newEventEnd,
         companies: isMultiCompany ? companyTargets : undefined
@@ -137,7 +137,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const newEvent: Event = {
         id: crypto.randomUUID(),
         name: newEventName,
-        targetCount: isMultiCompany ? companyTargets.reduce((sum, t) => sum + (t.count || 0), 0) : newEventTarget,
+        targetCount: isMultiCompany ? companyTargets.reduce((sum, t) => sum + (t.count || 0), 0) : Number(newEventTarget),
         currentCount: 0,
         startDate: newEventStart,
         endDate: newEventEnd,
@@ -614,7 +614,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {activeEvents.map((event) => {
                 const isLate = new Date(event.startDate) < new Date();
                 const textColor = isLate ? 'text-red-500 dark:text-red-400' : 'text-gray-900 dark:text-white';
-                const realCount = event.currentCount;
+                const realCount = scannedEntries[event.id]?.length || event.currentCount;
 
                 return (
                   <div key={event.id} className={`bg-white dark:bg-[#0f172a] border ${isLate ? 'border-red-500/20' : 'border-gray-200 dark:border-gray-800/80'} p-2.5 rounded-xl shadow-sm hover:shadow-md transition-all`}>
@@ -649,6 +649,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             {realCount} / {event.targetCount}
                           </span>
                         </div>
+
+                        {/* User Scan Counts */}
+                        {(() => {
+                          const entries = scannedEntries[event.id] || [];
+                          if (entries.length === 0) return null;
+                          const userStats = entries.reduce((acc, entry) => {
+                            const user = entry.recordedBy || 'Bilinmiyor';
+                            acc[user] = (acc[user] || 0) + 1;
+                            return acc;
+                          }, {} as Record<string, number>);
+
+                          return (
+                            <div className="flex flex-wrap gap-1.5 mt-1">
+                              {Object.entries(userStats).map(([username, count]) => (
+                                <div key={username} className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/20 text-[9px] font-bold text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-800/50">
+                                  <UserIcon size={10} />
+                                  <span>{username}:</span>
+                                  <span className="bg-blue-100 dark:bg-blue-800 px-1 rounded-sm">{count}</span>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
 
                         <div className="w-full max-w-sm bg-gray-100 dark:bg-gray-800 h-1 rounded-full overflow-hidden">
                           <div
@@ -752,6 +775,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   {realCount} / {event.targetCount}
                                 </span>
                               </div>
+
+                              {/* User Scan Counts */}
+                              {(() => {
+                                if (entries.length === 0) return null;
+                                const userStats = entries.reduce((acc, entry) => {
+                                  const user = entry.recordedBy || 'Bilinmiyor';
+                                  acc[user] = (acc[user] || 0) + 1;
+                                  return acc;
+                                }, {} as Record<string, number>);
+
+                                return (
+                                  <div className="flex flex-wrap gap-1.5 mt-1">
+                                    {Object.entries(userStats).map(([username, count]) => (
+                                      <div key={username} className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-green-50 dark:bg-green-900/20 text-[9px] font-bold text-green-600 dark:text-green-400 border border-green-100 dark:border-green-800/50">
+                                        <UserIcon size={10} />
+                                        <span>{username}:</span>
+                                        <span className="bg-green-100 dark:bg-green-800 px-1 rounded-sm">{count}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
 
                               <div className="w-full max-w-sm bg-gray-100 dark:bg-gray-800 h-1 rounded-full overflow-hidden">
                                 <div
@@ -1080,7 +1125,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <input
                       type="number"
                       value={newEventTarget}
-                      onChange={(e) => setNewEventTarget(parseInt(e.target.value) || 0)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setNewEventTarget(val === '' ? '' : (parseInt(val) || 0));
+                      }}
                       className="w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 border border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-secondary-500 outline-none"
                       min="1"
                       required={!isMultiCompany}

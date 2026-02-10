@@ -97,7 +97,7 @@ const App: React.FC = () => {
         setUsers(INITIAL_USERS);
       } else {
         setUsers(fetchedUsers);
-        console.log(`✅ Users refreshed: ${fetchedUsers.length}`);
+        console.log(`✅ Users refreshed: ${fetchedUsers.length} `);
       }
     } catch (error: any) {
       console.error("❌ Error refreshing users:", error);
@@ -170,13 +170,10 @@ const App: React.FC = () => {
     const unsubEvents = onSnapshot(q, (snapshot) => {
       const fetchedEvents: Event[] = snapshot.docs.map(doc => doc.data() as Event);
 
-      if (fetchedEvents.length === 0) {
-        // Seed logic if necessary...
-      } else {
-        setEvents(fetchedEvents);
-        localStorage.setItem('geds_events_cache', JSON.stringify(fetchedEvents));
-        console.log(`✅ Events synced real-time: ${fetchedEvents.length}`);
-      }
+      // ALWAYS set events, even if empty, to reflect true DB state
+      setEvents(fetchedEvents);
+      localStorage.setItem('geds_events_cache', JSON.stringify(fetchedEvents));
+      console.log(`✅ Events synced real - time: ${fetchedEvents.length} `);
     }, (error) => {
       console.error("Events listener error", error);
     });
@@ -234,7 +231,7 @@ const App: React.FC = () => {
         const otherEnd = new Date(otherEvent.endDate).getTime();
 
         if (currentStart < otherEnd && currentEnd > otherStart) {
-          return `⚠️ ÇAKIŞMA: Bu kişi ilk olarak "${otherEvent.name}" etkinliğinde okutulmuştur.\nBu etkinlikte görev alıyor (${scan.recordedBy || 'Bilinmiyor'} tarafından kaydedildi). Lütfen oradaki denetlemeci ile iletişime geçiniz.`;
+          return `⚠️ ÇAKIŞMA: Bu kişi ilk olarak "${otherEvent.name}" etkinliğinde okutulmuştur.\nBu etkinlikte görev alıyor(${scan.recordedBy || 'Bilinmiyor'} tarafından kaydedildi).Lütfen oradaki denetlemeci ile iletişime geçiniz.`;
         }
       }
 
@@ -245,8 +242,6 @@ const App: React.FC = () => {
     }
   };
 
-  // 3. Optimized Scanned Entries Subscription
-  // 3. Optimized Scanned Entries Subscription with Caching
   // 3. Optimized Scanned Entries Subscription with Caching
   // A. Load Cache (Run once on auth)
   useEffect(() => {
@@ -258,7 +253,7 @@ const App: React.FC = () => {
         const cachedEntries = JSON.parse(cachedEntriesStr) as Record<string, ScanEntry[]>;
         if (Object.keys(cachedEntries).length > 0) {
           setScannedEntries(prev => ({ ...prev, ...cachedEntries }));
-          console.log(`✅ Loaded cached entries for ${Object.keys(cachedEntries).length} events (Active & Passive)`);
+          console.log(`✅ Loaded cached entries for ${Object.keys(cachedEntries).length} events(Active & Passive)`);
         }
       } catch (e) {
         console.warn('Failed to parse scanned entries cache', e);
@@ -266,64 +261,84 @@ const App: React.FC = () => {
     }
   }, [session.isAuthenticated]);
 
-  // B. Real-time Subscription for Active/Continuing Events
+  // B. Real-time Subscription for ALL Active Events
+  // This ensures that all users see all scans in real-time, whether they are auditing or on dashboard.
   useEffect(() => {
     if (!session.isAuthenticated) return;
 
-    let targetEventIds: string[] = [];
+    // Get IDs of all ACTIVE events
+    const activeIds = events
+      .filter(e => e.status === 'ACTIVE')
+      .map(e => e.id);
 
+    // Ensure we always include the current auditing event if it's set
+    const combinedIds = [...new Set([...activeIds, ...(activeEventId ? [activeEventId] : [])])];
+
+    // Firestore 'in' query limit is 10. For more events, we'd need multiple listeners.
+    // We prioritize the current activeEventId if it exists.
+    let targetEventIds: string[] = [];
     if (activeEventId) {
-      // Audit Screen: Single Event
-      targetEventIds = [activeEventId];
+      targetEventIds = [activeEventId, ...combinedIds.filter(id => id !== activeEventId)].slice(0, 10);
     } else {
-      // Dashboard: Continuing Events (Active + Count > 0)
-      // Limit to 10 for 'in' query safety
-      targetEventIds = events
-        .filter(e => e.status === 'ACTIVE' && e.currentCount > 0)
-        .map(e => e.id)
-        .slice(0, 10);
+      targetEventIds = combinedIds.slice(0, 10);
     }
 
     if (targetEventIds.length === 0) {
-      // Do NOT clear scannedEntries here, or we lose passive data!
       return;
     }
 
+    // Stability check: only re-subscribe if the set of IDs changed
+    const idsKey = targetEventIds.sort().join(',');
+    const lastIdsKey = (window as any)._lastScannedIdsKey;
+    if (lastIdsKey === idsKey) return;
+    (window as any)._lastScannedIdsKey = idsKey;
 
+    console.log(`📡 Starting real - time listener for scanned entries: ${targetEventIds.length} events`);
 
-    // Firestore 'in' query allows max 10 values
-    // If user has >10 continuing events, only top 10 will update live.
-    // This is an optimization tradeoff.
     const q = query(
       collection(db, 'scanned_entries'),
-      where('eventId', 'in', targetEventIds),
-      orderBy('timestamp', 'desc')
+      where('eventId', 'in', targetEventIds)
     );
 
     const unsubEntries = onSnapshot(q, (snapshot) => {
-      const fetchedEntries: ScanEntry[] = snapshot.docs.map(doc => doc.data() as ScanEntry);
+      // Sort in memory to avoid "Composite Index Required" error
+      const fetchedEntries: ScanEntry[] = snapshot.docs
+        .map(doc => doc.data() as ScanEntry)
+        .sort((a, b) => (b.serverTimestamp || 0) - (a.serverTimestamp || 0));
 
-      // Build update object ensuring all target events have an entry (even if empty)
+      // Build update object
       const updateObj: Record<string, ScanEntry[]> = {};
       targetEventIds.forEach(eid => updateObj[eid] = []);
       fetchedEntries.forEach(entry => {
-        updateObj[entry.eventId].push(entry);
+        if (updateObj[entry.eventId]) {
+          updateObj[entry.eventId].push(entry);
+        }
       });
 
-      // MERGE with existing state to preserve passive data
+      // Update state
       setScannedEntries(prev => ({ ...prev, ...updateObj }));
 
-      // Update Cache (Merge with existing cache to avoid losing data for other events)
-      const currentCacheStr = localStorage.getItem('geds_scanned_entries_cache');
-      let newCache = currentCacheStr ? JSON.parse(currentCacheStr) : {};
-      // Update with new active data
-      Object.assign(newCache, updateObj);
-      localStorage.setItem('geds_scanned_entries_cache', JSON.stringify(newCache));
-      console.log(`✅ Scanned entries synced and cached for ${targetEventIds.length} active events`);
+      // Update Cache
+      try {
+        const currentCacheStr = localStorage.getItem('geds_scanned_entries_cache');
+        let newCache = currentCacheStr ? JSON.parse(currentCacheStr) : {};
+        Object.assign(newCache, updateObj);
+        localStorage.setItem('geds_scanned_entries_cache', JSON.stringify(newCache));
+      } catch (e) {
+        console.warn("Cache update error", e);
+      }
+
+      console.log(`✅ Scanned entries synced for ${targetEventIds.length} events(${fetchedEntries.length} total entries)`);
+    }, (error) => {
+      console.error("Scanned entries listener error", error);
     });
 
-    return () => unsubEntries();
-  }, [session.isAuthenticated, activeEventId, events]); // Re-run when event counts change (e.g. new event becomes 'continuing')
+    return () => {
+      console.log("🛑 Cleaning up scanned entries listener");
+      unsubEntries();
+      (window as any)._lastScannedIdsKey = null;
+    };
+  }, [session.isAuthenticated, activeEventId, events]); // Re-run if events list or active event changes
 
   // --- Handlers (Now using Firestore) ---
 
@@ -360,14 +375,22 @@ const App: React.FC = () => {
   };
 
   const handleAddEvent = async (event: Event) => {
-    // Optimistic Update (Immediate Feedback for Creator)
+    // 1. Prepare clean payload (Firestore doesn't like 'undefined')
+    const cleanEvent = JSON.parse(JSON.stringify(event));
+    if (!cleanEvent.companies) delete cleanEvent.companies;
+
+    // 2. Optimistic Update
     setEvents(prev => [event, ...prev]);
 
     try {
-      await setDoc(doc(db, 'events', event.id), event);
+      console.log("💾 Saving new event to Firestore...", cleanEvent.id);
+      await setDoc(doc(db, 'events', cleanEvent.id), cleanEvent);
+      console.log("✅ Event saved successfully");
     } catch (e) {
-      console.error("Error adding event: ", e);
-      // Rollback if needed, but usually next snapshot fixes it
+      console.error("❌ Error adding event: ", e);
+      // Rollback optimistic update on error
+      const cached = localStorage.getItem('geds_events_cache');
+      if (cached) setEvents(JSON.parse(cached));
     }
   };
 
@@ -463,10 +486,17 @@ const App: React.FC = () => {
 
   const handleScan = async (entry: ScanEntry) => {
     try {
-      // 1. Add Entry
-      await setDoc(doc(db, 'scanned_entries', entry.id), entry);
+      // 1. Generate a truly unique ID to prevent collisions between multiple users scanning
+      const timestamp = Date.now();
+      const uniqueId = `${entry.eventId}_${entry.citizen.tc}_${timestamp}`;
+      const entryWithUniqueId = { ...entry, id: uniqueId, serverTimestamp: timestamp };
 
-      // 2. Increment Event Count (Optimistic or Transactional could be better, but simple update works here)
+      // 2. Add Entry
+      await setDoc(doc(db, 'scanned_entries', uniqueId), entryWithUniqueId);
+
+      // 3. Increment Event Count (Optimistic or Transactional could be better, but simple update works here)
+      // We use Firestore's atomic increment for better reliability if possible, 
+      // but for now we follow the existing pattern.
       const event = events.find(e => e.id === entry.eventId);
       if (event) {
         await updateDoc(doc(db, 'events', entry.eventId), {
@@ -583,8 +613,21 @@ const App: React.FC = () => {
         newEntries.forEach(entry => {
           cacheToUpdate[entry.eventId].push(entry);
         });
-        localStorage.setItem('geds_scanned_entries_cache', JSON.stringify(cacheToUpdate));
-        localStorage.setItem('geds_cache_timestamp', Date.now().toString()); // Update timestamp on manual refresh
+        try {
+          localStorage.setItem('geds_scanned_entries_cache', JSON.stringify(cacheToUpdate));
+          localStorage.setItem('geds_cache_timestamp', Date.now().toString());
+        } catch (storageError) {
+          if (storageError instanceof DOMException && (storageError.name === 'QuotaExceededError' || storageError.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
+            console.warn("⚠️ LocalStorage dolu! Eski veriler temizleniyor...");
+            localStorage.removeItem('geds_scanned_entries_cache'); // Clear other cache to make room
+            try {
+              localStorage.setItem('geds_scanned_entries_cache', JSON.stringify(cacheToUpdate));
+            } catch (innerError) {
+              console.error("❌ Veritabanı çok büyük, belleğe sığmıyor.");
+            }
+          }
+        }
+        // Update timestamp on manual refresh
         console.log(`✅ Cached updated passive data for ${eventIds.length} events`);
 
         return next;
