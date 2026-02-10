@@ -51,6 +51,11 @@ const App: React.FC = () => {
   // Flag to track if scanned entries have been loaded from cache already
   const scannedEntriesCacheLoaded = useRef(false);
 
+  // Per-event fetch timestamp tracker: eventId -> last fetch time (ms)
+  // If data was fetched within SCAN_CACHE_TTL, skip Firestore read
+  const eventFetchTimestamps = useRef<Record<string, number>>({});
+  const SCAN_CACHE_TTL = 10 * 60 * 1000; // 10 dakika
+
   // Theme State
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -123,14 +128,22 @@ const App: React.FC = () => {
     }
   };
 
-  // 1. Users Subscription & Initial Seeding
-  // 1. Users Loading (Max Optimization: Cache-First)
+  // 1. Users Loading (Cache-First with 30-min TTL)
   useEffect(() => {
+    const USERS_TTL = 30 * 60 * 1000; // 30 dakika
     const loadUsers = async () => {
       const cachedUsers = localStorage.getItem('geds_users_cache');
       if (cachedUsers) {
         setUsers(JSON.parse(cachedUsers));
         setIsUsersLoading(false);
+      }
+
+      // TTL kontrolü: Son 30 dakika içinde çekildiyse Firestore'a gitme
+      const lastFetch = localStorage.getItem('geds_users_fetch_ts');
+      if (lastFetch && cachedUsers && (Date.now() - Number(lastFetch)) < USERS_TTL) {
+        console.log('👤 Users cache taze (30dk dolmadı), Firestore sorgusu atlandı.');
+        setIsUsersLoading(false);
+        return;
       }
 
       try {
@@ -141,6 +154,7 @@ const App: React.FC = () => {
         if (fetchedUsers.length > 0) {
           setUsers(fetchedUsers);
           localStorage.setItem('geds_users_cache', JSON.stringify(fetchedUsers));
+          localStorage.setItem('geds_users_fetch_ts', Date.now().toString());
         }
       } catch (e) {
         console.warn("Users fetch from server failed, relying on cache.", e);
@@ -151,26 +165,35 @@ const App: React.FC = () => {
     loadUsers();
   }, []);
 
-  // 2. Events Loading (MAX Optimization: Initial Load Once)
+  // 2. Events Loading (Cache-First with 30-min TTL)
   useEffect(() => {
     if (!session.isAuthenticated) return;
+    const EVENTS_TTL = 30 * 60 * 1000; // 30 dakika
 
     const loadEventsOnce = async () => {
       try {
-        // Load from cache first for instant UI
+        // Cache'den yükle (anında UI)
         const cachedEvents = localStorage.getItem('geds_events_cache');
         if (cachedEvents) {
           setEvents(JSON.parse(cachedEvents));
         }
 
-        console.log('📡 Fetching events ONCE from server for cost saving...');
+        // TTL kontrolü: Son 30 dakika içinde çekildiyse Firestore'a gitme
+        const lastFetch = localStorage.getItem('geds_events_fetch_ts');
+        if (lastFetch && cachedEvents && (Date.now() - Number(lastFetch)) < EVENTS_TTL) {
+          console.log('📋 Events cache taze (30dk dolmadı), Firestore sorgusu atlandı.');
+          return;
+        }
+
+        console.log('📡 Fetching events from server...');
         const q = query(collection(db, 'events'), orderBy('startDate', 'asc'));
         const snapshot = await getDocs(q);
         const fetchedEvents: Event[] = snapshot.docs.map(doc => doc.data() as Event);
 
         setEvents(fetchedEvents);
         localStorage.setItem('geds_events_cache', JSON.stringify(fetchedEvents));
-        console.log(`✅ Events loaded once: ${fetchedEvents.length}`);
+        localStorage.setItem('geds_events_fetch_ts', Date.now().toString());
+        console.log(`✅ Events loaded: ${fetchedEvents.length}`);
       } catch (error) {
         console.error("Events fetch error", error);
       }
@@ -333,13 +356,13 @@ const App: React.FC = () => {
       try {
         if (!activeEventId) {
           // DASHBOARD MODE: Cache was already loaded in effect A above.
-          // Do nothing here to avoid redundant state updates.
           return;
         }
 
-        // AUDIT MODE: Load current event + overlapping events from Firestore (ONE TIME)
-        // Show cache instantly first
+        // AUDIT MODE: Cache-first with TTL check
         const cachedEntriesStr = localStorage.getItem('geds_scanned_entries_cache');
+
+        // 1. Cache'den anında göster
         if (cachedEntriesStr) {
           const cached = JSON.parse(cachedEntriesStr);
           if (cached[activeEventId]) {
@@ -347,7 +370,14 @@ const App: React.FC = () => {
           }
         }
 
-        // Use eventsRef to avoid dependency on events
+        // 2. TTL kontrolü: Bu etkinlik son 10 dakika içinde Firestore'dan çekildiyse tekrar çekme
+        const lastFetchTime = eventFetchTimestamps.current[activeEventId] || 0;
+        if ((Date.now() - lastFetchTime) < SCAN_CACHE_TTL) {
+          console.log(`⚡ Etkinlik ${activeEventId} verileri cache'de taze (10dk dolmadı), Firestore sorgusu atlandı.`);
+          return;
+        }
+
+        // 3. Firestore'dan çek (cache süresi dolmuş veya ilk kez)
         const currentEvents = eventsRef.current;
         const currentEvent = currentEvents.find(e => e.id === activeEventId);
         if (!currentEvent) return;
@@ -364,7 +394,7 @@ const App: React.FC = () => {
           })
           .map(e => e.id);
 
-        console.log(`📡 Loading scans for ${overlappingEventIds.length} overlapping events (ONE TIME READ)`);
+        console.log(`📡 Loading scans for ${overlappingEventIds.length} overlapping events (Firestore READ)`);
 
         const allEntries: Record<string, ScanEntry[]> = {};
 
@@ -390,7 +420,13 @@ const App: React.FC = () => {
 
         setScannedEntries(allEntries);
 
-        // Update Cache
+        // Fetch timestamp'lerini güncelle (tüm overlapping events için)
+        const now = Date.now();
+        overlappingEventIds.forEach(eid => {
+          eventFetchTimestamps.current[eid] = now;
+        });
+
+        // Cache güncelle
         try {
           const currentCacheStr = localStorage.getItem('geds_scanned_entries_cache');
           let newCache = currentCacheStr ? JSON.parse(currentCacheStr) : {};
