@@ -164,6 +164,13 @@ const App: React.FC = () => {
     loadEventsOnce();
   }, [session.isAuthenticated]);
 
+  // Auto-sync events to cache (ensures optimistic updates persist across page refreshes)
+  useEffect(() => {
+    if (events.length > 0) {
+      localStorage.setItem('geds_events_cache', JSON.stringify(events));
+    }
+  }, [events]);
+
   // Conflict Check (PURE LOCAL - Zero Firestore Reads)
   const checkCitizenshipConflict = async (tc: string, ignoreEventId: string): Promise<string | null> => {
     try {
@@ -192,8 +199,7 @@ const App: React.FC = () => {
         const otherEnd = new Date(otherEvent.endDate).getTime();
 
         if (currentStart < otherEnd && currentEnd > otherStart) {
-          const statusPrefix = otherEvent.status === 'PASSIVE' ? 'PASİF' : 'AKTİF';
-          return `⚠️ ÇAKIŞMA: Bu kişi "${otherEvent.name}" (${statusPrefix}) etkinliği ile aynı saat diliminde çakışıyor.\nZaten kaydedilmiş (${scan.recordedBy || 'Bilinmiyor'} tarafından).`;
+          return `⚠️ ÇAKIŞMA!\n${tc} TC kimlik numaralı şahıs "${otherEvent.name}" etkinliğinde zaten kayıtlıdır.\nKaydeden: ${scan.recordedBy || 'Bilinmiyor'}\nBu kişiyi tekrar kayıt edemezsiniz. Lütfen oradaki denetlemeci ile iletişime geçiniz.`;
         }
       }
 
@@ -303,6 +309,18 @@ const App: React.FC = () => {
 
     loadScannedEntries();
   }, [session.isAuthenticated, activeEventId, events]);
+
+  // Auto-sync scanned entries to cache
+  useEffect(() => {
+    if (Object.keys(scannedEntries).length > 0) {
+      try {
+        const currentCacheStr = localStorage.getItem('geds_scanned_entries_cache');
+        let cache = currentCacheStr ? JSON.parse(currentCacheStr) : {};
+        Object.assign(cache, scannedEntries);
+        localStorage.setItem('geds_scanned_entries_cache', JSON.stringify(cache));
+      } catch (e) { /* silent */ }
+    }
+  }, [scannedEntries]);
 
   // --- Handlers ---
 
