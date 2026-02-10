@@ -291,6 +291,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setNewEventTarget(event.targetCount);
     setNewEventStart(event.startDate);
     setNewEventEnd(event.endDate);
+
+    // Multi-company handling
+    if (event.companies && event.companies.length > 0) {
+      setIsMultiCompany(true);
+      setCompanyCountInput(event.companies.length);
+      setCompanyTargets([...event.companies]);
+    } else {
+      setIsMultiCompany(false);
+      setCompanyCountInput(1);
+      setCompanyTargets([]);
+    }
+
     setShowEventModal(true);
   };
 
