@@ -222,6 +222,26 @@ const App: React.FC = () => {
 
   // 3. Optimized Scanned Entries Subscription
   // 3. Optimized Scanned Entries Subscription with Caching
+  // 3. Optimized Scanned Entries Subscription with Caching
+  // A. Load Cache (Run once on auth)
+  useEffect(() => {
+    if (!session.isAuthenticated) return;
+
+    const cachedEntriesStr = localStorage.getItem('geds_scanned_entries_cache');
+    if (cachedEntriesStr) {
+      try {
+        const cachedEntries = JSON.parse(cachedEntriesStr) as Record<string, ScanEntry[]>;
+        if (Object.keys(cachedEntries).length > 0) {
+          setScannedEntries(prev => ({ ...prev, ...cachedEntries }));
+          console.log(`✅ Loaded cached entries for ${Object.keys(cachedEntries).length} events (Active & Passive)`);
+        }
+      } catch (e) {
+        console.warn('Failed to parse scanned entries cache', e);
+      }
+    }
+  }, [session.isAuthenticated]);
+
+  // B. Real-time Subscription for Active/Continuing Events
   useEffect(() => {
     if (!session.isAuthenticated) return;
 
@@ -240,26 +260,11 @@ const App: React.FC = () => {
     }
 
     if (targetEventIds.length === 0) {
-      setScannedEntries({});
+      // Do NOT clear scannedEntries here, or we lose passive data!
       return;
     }
 
-    // Load all cached entries (Active + Passive) first
-    // This satisfies the requirement to keep passive data available for 24h (by persistence)
-    // and only refresh when requested.
-    const cachedEntriesStr = localStorage.getItem('geds_scanned_entries_cache');
-    if (cachedEntriesStr) {
-      try {
-        const cachedEntries = JSON.parse(cachedEntriesStr) as Record<string, ScanEntry[]>;
-        if (Object.keys(cachedEntries).length > 0) {
-          // Merge with current state (safe because this runs early or usually state is empty)
-          setScannedEntries(prev => ({ ...prev, ...cachedEntries }));
-          console.log(`✅ Loaded cached entries for ${Object.keys(cachedEntries).length} events (Active & Passive)`);
-        }
-      } catch (e) {
-        console.warn('Failed to parse scanned entries cache', e);
-      }
-    }
+
 
     // Firestore 'in' query allows max 10 values
     // If user has >10 continuing events, only top 10 will update live.
