@@ -332,10 +332,14 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       return;
     }
 
-    // Check existing in list
+    // Check existing in list (across ALL companies in this event)
     const alreadyScanned = scannedList.find(s => s.citizen.tc === trimmedTC);
     if (alreadyScanned) {
-      setLastScanResult({ status: 'ERROR', message: 'MÜKERRER KAYIT! Bu kişi zaten listeye eklendi.' });
+      if (alreadyScanned.companyName && alreadyScanned.companyName !== activeCompanyName) {
+        setLastScanResult({ status: 'ERROR', message: `MÜKERRER! ${trimmedTC} TC kimlik numaralı şahıs ${alreadyScanned.companyName} şirketinde kayda alındı.` });
+      } else {
+        setLastScanResult({ status: 'ERROR', message: 'MÜKERRER KAYIT! Bu kişi zaten listeye eklendi.' });
+      }
       setTcInput('');
       return;
     }
@@ -599,11 +603,16 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     }
   };
 
+  // Filter list by selected company for display
+  const companyFilteredList = activeCompanyName
+    ? scannedList.filter(s => s.companyName === activeCompanyName)
+    : scannedList;
+
   // Determine effective target for progress display (company-specific)
   const effectiveTarget = activeCompanyName
     ? (event.companies?.find(c => c.name === activeCompanyName)?.count || event.targetCount)
     : event.targetCount;
-  const progressPercentage = Math.min(100, Math.round((scannedList.length / effectiveTarget) * 100));
+  const progressPercentage = Math.min(100, Math.round((companyFilteredList.length / effectiveTarget) * 100));
   // Finish button requires TOTAL event target (all companies combined)
   const isTargetReached = scannedList.length >= event.targetCount;
 
@@ -679,7 +688,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       <div className="bg-gray-100 dark:bg-gray-800 px-4 py-1.5 border-b border-gray-200 dark:border-gray-700">
         <div className="flex justify-between text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mb-1">
           <span>İlerleme</span>
-          <span>{scannedList.length} / {effectiveTarget} (%{progressPercentage})</span>
+          <span>{companyFilteredList.length} / {effectiveTarget} (%{progressPercentage})</span>
         </div>
         <div className="w-full bg-gray-300 dark:bg-gray-600 rounded-full h-2 overflow-hidden">
           <div
@@ -762,13 +771,13 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
           <div className="flex gap-2">
             <button
               onClick={exportToExcel}
-              disabled={scannedList.length === 0}
+              disabled={companyFilteredList.length === 0}
               className="flex items-center gap-1.5 bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Download size={14} /> Excel'e Aktar
             </button>
             {/* Partial Finish Button */}
-            {!isTargetReached && scannedList.length > 0 && (
+            {!isTargetReached && companyFilteredList.length > 0 && (
               <button
                 onClick={() => {
                   if (confirm('Hedef sayıya ulaşılmadı. Yine de denetimi bitirmek istiyor musunuz?')) {
@@ -795,7 +804,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
         </div>
 
         {/* List */}
-        {scannedList.length > 0 ? (
+        {companyFilteredList.length > 0 ? (
           <div className="w-full bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
             <table className="w-full text-center text-xs">
               <thead className="bg-gray-50 dark:bg-gray-900/30 border-b border-gray-200 dark:border-gray-700">
@@ -811,7 +820,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                {scannedList.map((entry, index) => {
+                {companyFilteredList.map((entry, index) => {
                   const status = checkWorkStatus(entry.citizen.validityDate);
                   return (
                     <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
