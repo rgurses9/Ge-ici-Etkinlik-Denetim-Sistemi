@@ -22,9 +22,20 @@ import {
 
 const App: React.FC = () => {
   // --- Global State ---
-  const [session, setSession] = useState<SessionState>({
-    isAuthenticated: false,
-    currentUser: null,
+  const [session, setSession] = useState<SessionState>(() => {
+    // Check localStorage for existing session
+    const savedSession = localStorage.getItem('geds_session');
+    if (savedSession) {
+      try {
+        return JSON.parse(savedSession);
+      } catch (e) {
+        console.error('Failed to parse session from localStorage', e);
+      }
+    }
+    return {
+      isAuthenticated: false,
+      currentUser: null,
+    };
   });
 
   const [events, setEvents] = useState<Event[]>([]);
@@ -54,7 +65,18 @@ const App: React.FC = () => {
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
   // Audit State
-  const [activeEventId, setActiveEventId] = useState<string | null>(null);
+  const [activeEventId, setActiveEventId] = useState<string | null>(() => {
+    return localStorage.getItem('geds_active_event_id');
+  });
+
+  // Persist activeEventId changes
+  useEffect(() => {
+    if (activeEventId) {
+      localStorage.setItem('geds_active_event_id', activeEventId);
+    } else {
+      localStorage.removeItem('geds_active_event_id');
+    }
+  }, [activeEventId]);
 
   // --- Firestore Subscriptions ---
 
@@ -279,10 +301,12 @@ const App: React.FC = () => {
   // --- Handlers (Now using Firestore) ---
 
   const handleLogin = (user: User) => {
-    setSession({
+    const newSession = {
       isAuthenticated: true,
       currentUser: user,
-    });
+    };
+    setSession(newSession);
+    localStorage.setItem('geds_session', JSON.stringify(newSession));
   };
 
   const handleLogout = () => {
@@ -291,6 +315,8 @@ const App: React.FC = () => {
       currentUser: null,
     });
     setActiveEventId(null);
+    localStorage.removeItem('geds_session');
+    localStorage.removeItem('geds_active_event_id');
   };
 
   const handleAddEvent = async (event: Event) => {
