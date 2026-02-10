@@ -21,8 +21,8 @@ interface WorkerRecord {
 }
 
 // SECURITY: Retrieve IDs from environment variables.
-const SPREADSHEET_ID = (import.meta as any).env.VITE_SPREADSHEET_ID || '1SU3otVPg8MVP77yfNdrIZ3Qlw5k7VoFg';
-const GID = (import.meta as any).env.VITE_SHEET_GID || '893430437';
+const SPREADSHEET_ID = import.meta.env.VITE_SPREADSHEET_ID || '1SU3otVPg8MVP77yfNdrIZ3Qlw5k7VoFg';
+const GID = import.meta.env.VITE_SHEET_GID || '893430437';
 const CSV_EXPORT_URL = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${GID}`;
 
 async function fetchSheetData(): Promise<WorkerRecord[]> {
@@ -51,33 +51,51 @@ async function fetchSheetData(): Promise<WorkerRecord[]> {
 }
 
 function parseCSV(csvText: string): WorkerRecord[] {
-  const rows = csvText.split(/\r?\n/);
+  const rows = csvText.split(/\r?\n/).filter(line => line.trim().length > 0);
   const records: WorkerRecord[] = [];
+
+  if (rows.length === 0) return [];
 
   // Find the header row dynamically
   let headerRowIndex = -1;
   for (let i = 0; i < Math.min(rows.length, 10); i++) {
     const rowUpper = rows[i].toUpperCase();
-    if (rowUpper.includes('T.C.') && (rowUpper.includes('ADI') || rowUpper.includes('SOYADI'))) {
+    if ((rowUpper.includes('T.C.') || rowUpper.includes('TC')) && (rowUpper.includes('AD'))) {
       headerRowIndex = i;
       break;
     }
   }
 
   if (headerRowIndex === -1) {
-    console.warn('Could not find header row in CSV');
+    console.warn('Could not find header row in CSV. Available rows preview:', rows.slice(0, 3));
     return [];
   }
 
-  const headers = parseCSVRow(rows[headerRowIndex]);
+  const headers = parseCSVRow(rows[headerRowIndex]).map(h => h.trim());
+  console.log('Detected Headers:', headers);
 
   // Map columns based on headers
-  const tcIndex = headers.findIndex(h => h.toUpperCase().includes('T.C.') || h.toUpperCase().includes('TC'));
-  const nameIndex = headers.findIndex(h => h.toUpperCase().includes('ADI') && h.toUpperCase().includes('SOYADI'));
-  const dateIndex = headers.findIndex(h => h.toUpperCase().includes('GEÇERLİLİK') || h.toUpperCase().includes('TARİH'));
+  const tcIndex = headers.findIndex(h => {
+    const s = h.toUpperCase();
+    return s.includes('T.C.') || s.includes('TC') || s === 'KİMLİK NO';
+  });
+
+  // Try combined "ADI SOYADI" first
+  let fullNameIndex = headers.findIndex(h => h.toUpperCase().includes('ADI') && h.toUpperCase().includes('SOYADI'));
+
+  // Then try separate "ADI" and "SOYADI"
+  const firstNameIndex = headers.findIndex(h => h.toUpperCase() === 'ADI' || h.toUpperCase() === 'AD');
+  const lastNameIndex = headers.findIndex(h => h.toUpperCase() === 'SOYADI' || h.toUpperCase() === 'SOYAD');
+
+  const dateIndex = headers.findIndex(h => {
+    const s = h.toUpperCase();
+    return s.includes('GEÇERLİLİK') || s.includes('TARİH') || s.includes('EXPIRY');
+  });
+
+  console.log(`Column Mapping: TC Index: ${tcIndex}, FullName Index: ${fullNameIndex}, FirstName Index: ${firstNameIndex}, LastName Index: ${lastNameIndex}, Date Index: ${dateIndex}`);
 
   if (tcIndex === -1) {
-    console.warn('Could not find TC column');
+    console.warn('Could not find TC column in headers:', headers);
     return [];
   }
 
@@ -88,20 +106,26 @@ function parseCSV(csvText: string): WorkerRecord[] {
   for (let i = headerRowIndex + 1; i < rows.length; i++) {
     const row = parseCSVRow(rows[i]);
 
-    // Skip empty or malformed rows
     if (row.length <= tcIndex) continue;
 
-    const tc = row[tcIndex]?.trim();
+    const tc = row[tcIndex]?.trim().replace(/\D/g, '');
 
     // Basic TC validation (11 digits)
-    if (!tc || tc.length !== 11 || !/^\d+$/.test(tc)) continue;
+    if (!tc || tc.length !== 11) continue;
 
-    const fullName = nameIndex > -1 ? row[nameIndex]?.trim() : '';
+    let fullName = '';
+    if (fullNameIndex > -1) {
+      fullName = row[fullNameIndex]?.trim();
+    } else if (firstNameIndex > -1) {
+      const fn = row[firstNameIndex]?.trim() || '';
+      const ln = lastNameIndex > -1 ? row[lastNameIndex]?.trim() || '' : '';
+      fullName = `${fn} ${ln}`.trim();
+    }
+
     const expiryDateStr = dateIndex > -1 ? row[dateIndex]?.trim() : '';
 
     // Calculate Status based on Date
     let status: 'active' | 'inactive' | 'expired' = 'inactive';
-
     const expiryDateObj = parseDate(expiryDateStr);
 
     if (expiryDateObj) {
@@ -122,6 +146,7 @@ function parseCSV(csvText: string): WorkerRecord[] {
     });
   }
 
+  console.log(`Successfully parsed ${records.length} records from Google Sheets.`);
   return records;
 }
 
@@ -220,71 +245,81 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   }, []);
 
   // Fetch from Google Sheets with Caching (48 Hours)
-  useEffect(() => {
-    const loadData = async () => {
-      // Default to OFFLINE mode if cache exists and is fresh enough (24h as requested)
-      const CACHE_KEY = 'geds_db_cache_v2';
-      const TIME_KEY = 'geds_db_timestamp_v2';
-      const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+  const loadData = async (force = false) => {
+    const CACHE_KEY = 'geds_db_cache_v2';
+    const TIME_KEY = 'geds_db_timestamp_v2';
+    const CACHE_DURATION = 24 * 60 * 60 * 1000;
 
-      try {
+    try {
+      if (!force) {
         const cachedData = localStorage.getItem(CACHE_KEY);
         const cachedTime = localStorage.getItem(TIME_KEY);
         const now = Date.now();
 
-        // 1. Check if cache exists AND is valid (< 24 hours)
         if (cachedData && cachedTime) {
           const age = now - parseInt(cachedTime);
           if (age < CACHE_DURATION) {
-            console.log('📦 Using cached database (Valid < 24h)');
+            console.log('📦 Using cached database');
             const onlineCitizens = JSON.parse(cachedData) as Citizen[];
-            const mergedDB = [...onlineCitizens, ...MOCK_CITIZEN_DB];
-            setDatabase(mergedDB);
+            setDatabase([...onlineCitizens, ...MOCK_CITIZEN_DB]);
             setDbStatus('READY');
             onDatabaseUpdate(onlineCitizens);
             return;
-          } else {
-            console.log('⚠️ Cache expired (> 24h), fetching fresh data...');
+          }
+        }
+      }
+
+      console.log('🌐 Fetching fresh database from Google Sheets...');
+      setDbStatus('LOADING');
+      const workerRecords = await fetchSheetData();
+      console.log(`Fetched ${workerRecords.length} worker records from Google Sheets`);
+
+      if (workerRecords.length > 0) {
+        console.log('Sample Record from Sheet:', workerRecords[0]);
+        const onlineCitizens = workerRecords.map(r => ({
+          tc: r.tc,
+          name: r.fullName,
+          surname: '',
+          validityDate: r.expiryDate
+        }));
+
+        try {
+          localStorage.setItem(CACHE_KEY, JSON.stringify(onlineCitizens));
+          localStorage.setItem(TIME_KEY, Date.now().toString());
+        } catch (storageError) {
+          if (storageError instanceof DOMException && (storageError.name === 'QuotaExceededError' || storageError.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
+            console.warn("⚠️ LocalStorage dolu! Eski veriler temizleniyor...");
+            localStorage.removeItem('geds_scanned_entries_cache'); // Clear other cache to make room
+            try {
+              localStorage.setItem(CACHE_KEY, JSON.stringify(onlineCitizens));
+            } catch (innerError) {
+              console.error("❌ Veritabanı çok büyük, tarayıcı hafızasına sığmıyor.");
+            }
           }
         }
 
-        // If no cache, fetch initial
-        console.log('🌐 Fetching fresh database from Google Sheets...');
-        setDbStatus('LOADING');
-        const workerRecords = await fetchSheetData();
-
-        if (workerRecords.length > 0) {
-          // ... (rest of processing)
-          const onlineCitizens = workerRecords.map(r => ({
-            tc: r.tc,
-            name: r.fullName,
-            surname: '',
-            validityDate: r.expiryDate
-          }));
-
-          localStorage.setItem(CACHE_KEY, JSON.stringify(onlineCitizens));
-          localStorage.setItem(TIME_KEY, Date.now().toString());
-
-          const mergedDB = [...onlineCitizens, ...MOCK_CITIZEN_DB];
-          setDatabase(mergedDB);
-          setDbStatus('READY');
-          onDatabaseUpdate(onlineCitizens);
-        } else {
-          console.warn("Worker fetch returned empty, using Mock DB as fallback");
-          // Fallback to MOCK
-          setDatabase(MOCK_CITIZEN_DB);
-          setDbStatus('READY'); // Pretend it's ready so user doesn't see error
-        }
-      } catch (e) {
-        console.error("DB Load error", e);
-        // Fallback to MOCK
+        setDatabase([...onlineCitizens, ...MOCK_CITIZEN_DB]);
+        setDbStatus('READY');
+        onDatabaseUpdate(onlineCitizens);
+      } else {
+        console.warn("Worker fetch returned empty");
         setDatabase(MOCK_CITIZEN_DB);
         setDbStatus('READY');
       }
-    };
+    } catch (e) {
+      console.error("DB Load error", e);
+      setDatabase(MOCK_CITIZEN_DB);
+      setDbStatus('READY');
+    }
+  };
 
+  useEffect(() => {
     loadData();
-  }, []); // Run once on mount
+  }, []);
+
+  const handleRefreshDatabase = () => {
+    loadData(true);
+  };
 
 
 
@@ -338,6 +373,11 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       };
       message = 'Kimlik kartının geçerlilik süresini kontrol et';
       status = 'WARNING';
+    }
+
+    // Check if we hit the target with this scan
+    if (scannedList.length + 1 >= event.targetCount) {
+      message = "🏁 HEDEF SAYIYA ULAŞILDI! Lütfen 'Denetimi Bitir' butonuna basın.";
     }
 
     const newEntry: ScanEntry = {
@@ -473,9 +513,15 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
       if (newEntries.length > 0) {
         onBulkScan(newEntries);
+
+        let finalMessage = `${newEntries.length} kişi eklendi. ${failCount} kişi hatalı/çakışan veya mükerrer. ${errorMsg}`;
+        if (scannedList.length + newEntries.length >= event.targetCount) {
+          finalMessage = `🏁 HEDEF SAYIYA ULAŞILDI! ${newEntries.length} kişi eklendi. Lütfen 'Denetimi Bitir' butonuna basın.`;
+        }
+
         setLastScanResult({
           status: 'SUCCESS',
-          message: `${newEntries.length} kişi eklendi. ${failCount} kişi hatalı/çakışan veya mükerrer. ${errorMsg}`
+          message: finalMessage
         });
       } else {
         setLastScanResult({
@@ -603,8 +649,15 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
                 <><Loader2 size={10} className="animate-spin" /> Veritabanı Yükleniyor...</>
               ) : (
                 <>
-                  <div className={`w-1.5 h-1.5 rounded-full ${dbStatus === 'READY' ? 'bg-green-500' : 'bg-green-500'}`}></div>
-                  {dbStatus === 'READY' ? 'Veritabanı Güncel (24s Geçerli)' : 'Çevrimdışı Çalışıyor'}
+                  <div className={`w-1.5 h-1.5 rounded-full ${dbStatus === 'READY' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                  {dbStatus === 'READY' ? 'Veritabanı Hazır' : 'Veritabanı Hatası'}
+                  <button
+                    onClick={handleRefreshDatabase}
+                    className="ml-2 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors text-blue-500"
+                    title="Veritabanını Yenile"
+                  >
+                    <RefreshCw size={12} className="hover:rotate-180 transition-transform" />
+                  </button>
                 </>
               )}
             </span>

@@ -42,6 +42,7 @@ export interface ScanEntry {
   citizen: Citizen;
   timestamp: string;
   recordedBy: string; // The username of the person who scanned this entry
+  serverTimestamp?: number; // Added for reliable local sorting without complex indexes
 }
 
 export interface SessionState {
