@@ -810,7 +810,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       return (
                         <div key={event.id} className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800/80 p-4 rounded-xl shadow-sm hover:shadow-md transition-all">
                           <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-                            <div className="flex-1 space-y-2">
+                            <div className="flex-1 space-y-2 w-full">
                               <div className="flex items-center gap-2">
                                 <h4 className="font-bold text-gray-900 dark:text-white text-xs">
                                   {event.name}
@@ -832,16 +832,76 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 </div>
                               </div>
 
+                              {/* Overall Totals */}
                               <div className="flex items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400 font-medium tracking-tight">
-                                <span>Hedef: {event.targetCount}</span>
+                                <span>Toplam Hedef: {event.targetCount}</span>
                                 <span className="text-gray-300 dark:text-gray-600 mx-1">•</span>
-                                <span className="text-green-600 dark:text-green-400 font-bold">
-                                  {realCount} / {event.targetCount}
+                                <span className={`font-bold ${realCount >= event.targetCount ? 'text-green-600 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                                  {realCount} / {event.targetCount} (%{Math.min(100, Math.round((realCount / event.targetCount) * 100))})
                                 </span>
                               </div>
 
-                              {/* User Scan Counts */}
-                              {(() => {
+                              {/* Company Cards */}
+                              {event.companies && event.companies.length > 0 && (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                                  {event.companies.map((company, cIdx) => {
+                                    const companyEntries = entries.filter(e => e.companyName === company.name);
+                                    const companyCount = companyEntries.length;
+                                    const companyPct = Math.min(100, Math.round((companyCount / company.count) * 100));
+                                    const companyReached = companyCount >= company.count;
+
+                                    // Per-user stats for this company
+                                    const companyUserStats = companyEntries.reduce((acc, entry) => {
+                                      const user = entry.recordedBy || 'Bilinmiyor';
+                                      acc[user] = (acc[user] || 0) + 1;
+                                      return acc;
+                                    }, {} as Record<string, number>);
+
+                                    return (
+                                      <div key={cIdx} className={`p-2.5 rounded-lg border ${companyReached
+                                        ? 'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700'
+                                        : 'bg-white dark:bg-gray-800/50 border-gray-200 dark:border-gray-700'
+                                        }`}>
+                                        <div className="flex items-center justify-between mb-1">
+                                          <span className="font-bold text-[11px] text-gray-800 dark:text-gray-200">
+                                            {company.name}
+                                          </span>
+                                          {companyReached && (
+                                            <span className="flex items-center gap-0.5 text-[9px] font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/40 px-1.5 py-0.5 rounded-full">
+                                              <CheckCircle size={10} /> TAMAM
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-1.5 text-[10px] text-gray-500 dark:text-gray-400 mb-1">
+                                          <span className={`font-bold ${companyReached ? 'text-green-600 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                                            {companyCount} / {company.count}
+                                          </span>
+                                          <span>(%{companyPct})</span>
+                                        </div>
+                                        <div className="w-full bg-gray-200 dark:bg-gray-700 h-1 rounded-full overflow-hidden mb-1.5">
+                                          <div
+                                            className={`h-full transition-all duration-500 rounded-full ${companyReached ? 'bg-green-500' : 'bg-blue-500'}`}
+                                            style={{ width: `${companyPct}%` }}
+                                          ></div>
+                                        </div>
+                                        {Object.keys(companyUserStats).length > 0 && (
+                                          <div className="flex flex-wrap gap-1">
+                                            {Object.entries(companyUserStats).map(([username, count]) => (
+                                              <div key={username} className="flex items-center gap-0.5 px-1 py-0.5 rounded bg-gray-50 dark:bg-gray-700/50 text-[8px] font-medium text-gray-600 dark:text-gray-400 border border-gray-100 dark:border-gray-600/50">
+                                                <UserIcon size={8} />
+                                                <span>{username}: {count}</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+
+                              {/* User Scan Counts (for non-company events) */}
+                              {(!event.companies || event.companies.length === 0) && (() => {
                                 if (entries.length === 0) return null;
                                 const userStats = entries.reduce((acc, entry) => {
                                   const user = entry.recordedBy || 'Bilinmiyor';
