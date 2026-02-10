@@ -108,90 +108,118 @@ const App: React.FC = () => {
   };
 
   // 1. Users Subscription & Initial Seeding
+  // 1. Users Loading (Optimized: Get Once + Cache)
   useEffect(() => {
-    // Safety timeout: stop loading spinner after 5 seconds if Firebase is slow
-    const timeoutId = setTimeout(() => {
-      setIsUsersLoading((prev) => {
-        if (prev) {
-          console.warn("⚠️ User data loading timed out.");
-          return false;
-        }
-        return prev;
-      });
-    }, 5000);
-
-    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
-      const fetchedUsers: User[] = snapshot.docs.map(doc => doc.data() as User);
-
-      // Seed Initial Users if DB is empty
-      if (fetchedUsers.length === 0) {
-        console.log("Seeding initial users to Firestore...");
-        INITIAL_USERS.forEach(async (user) => {
-          await setDoc(doc(db, 'users', user.id), user);
-        });
-      } else {
-        setUsers(fetchedUsers);
+    const loadUsers = async () => {
+      const cachedUsers = localStorage.getItem('geds_users_cache');
+      if (cachedUsers) {
+        setUsers(JSON.parse(cachedUsers));
+        setIsUsersLoading(false);
+        console.log("✅ Users loaded from cache (No Read)");
+        return;
       }
-      setIsUsersLoading(false);
-      clearTimeout(timeoutId);
-    }, (error) => {
-      console.error("❌ Users listener error:", error);
-      setIsUsersLoading(false);
-      clearTimeout(timeoutId);
-    });
 
-    return () => {
-      unsubUsers();
-      clearTimeout(timeoutId);
+      // Fetch Only if No Cache
+      try {
+        const q = query(collection(db, 'users'));
+        const snapshot = await getDocs(q);
+        const fetchedUsers: User[] = snapshot.docs.map(doc => doc.data() as User);
+
+        if (fetchedUsers.length === 0) {
+          // Seed...
+          console.log("Seeding initial users...");
+          for (const user of INITIAL_USERS) {
+            await setDoc(doc(db, 'users', user.id), user);
+          }
+          setUsers(INITIAL_USERS);
+          localStorage.setItem('geds_users_cache', JSON.stringify(INITIAL_USERS));
+        } else {
+          setUsers(fetchedUsers);
+          localStorage.setItem('geds_users_cache', JSON.stringify(fetchedUsers));
+        }
+      } catch (e) {
+        console.error("Error loading users", e);
+      } finally {
+        setIsUsersLoading(false);
+      }
     };
+    loadUsers();
   }, []);
 
   // 2. Events Subscription & Initial Seeding
   // 2. Events Subscription & Initial Seeding with Caching
+  // 2. Events Loading (Optimized: Get Once + Cache)
   useEffect(() => {
     if (!session.isAuthenticated) return;
 
-    // Load from cache first
-    const cachedEvents = localStorage.getItem('geds_events_cache');
-    if (cachedEvents) {
-      try {
-        const parsed = JSON.parse(cachedEvents);
-        setEvents(parsed);
-        console.log(`✅ Events loaded from cache: ${parsed.length}`);
-      } catch (e) {
-        console.warn('Failed to parse events cache', e);
+    const loadEvents = async () => {
+      // Load Cache First
+      const cachedEvents = localStorage.getItem('geds_events_cache');
+      if (cachedEvents) {
+        setEvents(JSON.parse(cachedEvents));
+        console.log("✅ Events loaded from cache (No Read)");
       }
-    }
 
-    const unsubEvents = onSnapshot(collection(db, 'events'), (snapshot) => {
-      const fetchedEvents: Event[] = snapshot.docs.map(doc => doc.data() as Event);
+      // We can skip fetching if we have cache, OR fetch in background to update cache.
+      // To strictly reduce reads "low days", we only fetch if no cache or on demand.
+      // But for events, we might want to check updates.
+      // Let's check updates BUT carefully.
 
-      // Seed Initial Events if DB is empty
-      if (fetchedEvents.length === 0) {
-        console.log("Seeding initial events to Firestore...");
+      // Actually, for "traffic reduction", let's use getDocs only.
+      const q = query(collection(db, 'events')); // simple query
+      const snapshot = await getDocs(q);
+      const fetchedEvents = snapshot.docs.map(doc => doc.data() as Event);
+
+      if (fetchedEvents.length > 0) {
+        setEvents(fetchedEvents);
+        localStorage.setItem('geds_events_cache', JSON.stringify(fetchedEvents));
+        console.log("✅ Events synced (Read Once)");
+      } else if (!cachedEvents && fetchedEvents.length === 0) {
+        // Seed logic...
+        console.log("Seeding initial events...");
         INITIAL_EVENTS.forEach(async (event) => {
           await setDoc(doc(db, 'events', event.id), event);
         });
-      } else {
-        setEvents(fetchedEvents);
-        // Update cache
-        localStorage.setItem('geds_events_cache', JSON.stringify(fetchedEvents));
-        console.log(`✅ Events synced and cached: ${fetchedEvents.length}`);
       }
-    });
+    };
 
-    return () => unsubEvents();
+    loadEvents();
+    // No interval polling to save reads. User must refresh page to see new events.
   }, [session.isAuthenticated]);
 
   // Conflict Check (On-Demand)
+  // Conflict Check (On-Demand)
   const checkCitizenshipConflict = async (tc: string, ignoreEventId: string): Promise<string | null> => {
     try {
-      const q = query(collection(db, 'scanned_entries'), where('citizen.tc', '==', tc));
-      const snapshot = await getDocs(q);
+      // 1. Check Local Cache (Fastest & Free)
+      // Iterate through all loaded events in state
+      let foundScans: ScanEntry[] = [];
+      Object.keys(scannedEntries).forEach(eventId => {
+        const entry = scannedEntries[eventId]?.find(s => s.citizen.tc === tc);
+        if (entry) foundScans.push(entry);
+      });
 
-      if (snapshot.empty) return null;
+      // If local cache found nothing, we might still need to check DB if we don't have all events loaded
+      // But typically for "Offline Mode" efficiency, we rely on what we have.
+      // However, to be safe and "Global", we do a single specific query if online.
 
-      const otherScans = snapshot.docs.map(d => d.data() as ScanEntry);
+      let otherScans = [...foundScans];
+
+      if (navigator.onLine && foundScans.length === 0) {
+        const q = query(collection(db, 'scanned_entries'), where('citizen.tc', '==', tc));
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          const dbScans = snapshot.docs.map(d => d.data() as ScanEntry);
+          // Merge avoiding duplicates
+          dbScans.forEach(s => {
+            if (!otherScans.find(Existing => Existing.id === s.id)) {
+              otherScans.push(s);
+            }
+          });
+        }
+      }
+
+      if (otherScans.length === 0) return null;
 
       const currentEvent = events.find(e => e.id === ignoreEventId);
       if (!currentEvent) return null;
