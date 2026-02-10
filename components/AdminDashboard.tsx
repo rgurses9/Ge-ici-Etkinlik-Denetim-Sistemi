@@ -548,13 +548,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <>
                 <button
                   onClick={() => setActiveTab('EVENTS')}
-                  className={`flex - 1 sm: flex - none px - 3 py - 2 rounded - lg text - sm font - medium flex items - center justify - center gap - 2 border ${activeTab === 'EVENTS' ? 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 shadow-sm text-gray-900 dark:text-white' : 'bg-transparent border-transparent text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'} `}
+                  className={`flex-1 sm:flex-none px-3 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 border ${activeTab === 'EVENTS' ? 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 shadow-sm text-gray-900 dark:text-white' : 'bg-transparent border-transparent text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'} `}
                 >
                   <Calendar size={16} /> Etkinlik
                 </button>
                 <button
                   onClick={() => setActiveTab('USERS')}
-                  className={`flex - 1 sm: flex - none px - 3 py - 2 rounded - lg text - sm font - medium flex items - center justify - center gap - 2 border ${activeTab === 'USERS' ? 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 shadow-sm text-gray-900 dark:text-white' : 'bg-transparent border-transparent text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'} `}
+                  className={`flex-1 sm:flex-none px-3 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 border ${activeTab === 'USERS' ? 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 shadow-sm text-gray-900 dark:text-white' : 'bg-transparent border-transparent text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'} `}
                 >
                   <Users size={16} /> Kullanıcı
                 </button>
