@@ -186,6 +186,79 @@ const App: React.FC = () => {
     }
   }, [events]);
 
+  // 2.5. Auto-Load Passive Event Data for Admins (24-hour cache)
+  const passiveAutoLoadDone = useRef(false);
+  useEffect(() => {
+    if (!session.isAuthenticated || !session.currentUser) return;
+    if (!session.currentUser.roles.includes('ADMIN' as any)) return;
+    if (events.length === 0) return;
+    if (passiveAutoLoadDone.current) return;
+    passiveAutoLoadDone.current = true;
+
+    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+    const lastTimestamp = localStorage.getItem('geds_passive_cache_timestamp');
+    const now = Date.now();
+
+    // Cache hâlâ taze mi? (24 saat içinde)
+    if (lastTimestamp && (now - Number(lastTimestamp)) < TWENTY_FOUR_HOURS) {
+      console.log('📋 Pasif veriler cache\'de taze (24 saat dolmadı), Firestore sorgusu yapılmadı.');
+      return;
+    }
+
+    // Son 35 pasif etkinliği bul ve verilerini yükle
+    const passiveEvents = events
+      .filter(e => e.status === 'PASSIVE')
+      .sort((a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime())
+      .slice(0, 35);
+
+    if (passiveEvents.length === 0) return;
+
+    const passiveEventIds = passiveEvents.map(e => e.id);
+    console.log(`📡 Admin: Son ${passiveEventIds.length} pasif etkinliğin verileri otomatik yükleniyor...`);
+
+    // Arka planda yükle (UI bloklamaz)
+    (async () => {
+      try {
+        const allEntries: ScanEntry[] = [];
+        for (let i = 0; i < passiveEventIds.length; i += 10) {
+          const chunk = passiveEventIds.slice(i, i + 10);
+          const q = query(collection(db, 'scanned_entries'), where('eventId', 'in', chunk));
+          const snap = await getDocs(q);
+          allEntries.push(...snap.docs.map(d => d.data() as ScanEntry));
+        }
+
+        // State'e ekle
+        setScannedEntries(prev => {
+          const next = { ...prev };
+          passiveEventIds.forEach(eid => next[eid] = []);
+          allEntries.forEach(entry => {
+            if (!next[entry.eventId]) next[entry.eventId] = [];
+            next[entry.eventId].push(entry);
+          });
+          return next;
+        });
+
+        // Cache güncelle
+        try {
+          const currentCacheStr = localStorage.getItem('geds_scanned_entries_cache');
+          let cache = currentCacheStr ? JSON.parse(currentCacheStr) : {};
+          passiveEventIds.forEach(eid => cache[eid] = []);
+          allEntries.forEach(entry => {
+            if (!cache[entry.eventId]) cache[entry.eventId] = [];
+            cache[entry.eventId].push(entry);
+          });
+          localStorage.setItem('geds_scanned_entries_cache', JSON.stringify(cache));
+          localStorage.setItem('geds_passive_cache_timestamp', now.toString());
+          console.log(`✅ Admin: ${passiveEventIds.length} pasif etkinliğin verileri cache'e yazıldı (24 saat geçerli).`);
+        } catch (e) {
+          console.warn('Pasif veri cache hatası:', e);
+        }
+      } catch (e) {
+        console.error('Pasif veri otomatik yükleme hatası:', e);
+      }
+    })();
+  }, [session.isAuthenticated, session.currentUser, events]);
+
   // Conflict Check (PURE LOCAL - Zero Firestore Reads)
   const checkCitizenshipConflict = async (tc: string, ignoreEventId: string): Promise<string | null> => {
     try {
@@ -630,6 +703,7 @@ const App: React.FC = () => {
         try {
           localStorage.setItem('geds_scanned_entries_cache', JSON.stringify(cacheToUpdate));
           localStorage.setItem('geds_cache_timestamp', Date.now().toString());
+          localStorage.setItem('geds_passive_cache_timestamp', Date.now().toString());
         } catch (storageError) {
           if (storageError instanceof DOMException && (storageError.name === 'QuotaExceededError' || storageError.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
             console.warn("⚠️ LocalStorage dolu! Eski veriler temizleniyor...");
