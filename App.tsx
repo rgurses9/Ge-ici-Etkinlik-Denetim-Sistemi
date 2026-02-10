@@ -69,6 +69,9 @@ const App: React.FC = () => {
   const [activeEventId, setActiveEventId] = useState<string | null>(() => {
     return localStorage.getItem('geds_active_event_id');
   });
+  const [activeCompanyName, setActiveCompanyName] = useState<string | null>(() => {
+    return localStorage.getItem('geds_active_company_name');
+  });
 
   // Persist activeEventId changes
   useEffect(() => {
@@ -77,7 +80,12 @@ const App: React.FC = () => {
     } else {
       localStorage.removeItem('geds_active_event_id');
     }
-  }, [activeEventId]);
+    if (activeCompanyName) {
+      localStorage.setItem('geds_active_company_name', activeCompanyName);
+    } else {
+      localStorage.removeItem('geds_active_company_name');
+    }
+  }, [activeEventId, activeCompanyName]);
 
   // --- Firestore Subscriptions ---
 
@@ -430,12 +438,14 @@ const App: React.FC = () => {
     }
   };
 
-  const handleStartAudit = (eventId: string) => {
+  const handleStartAudit = (eventId: string, companyName?: string) => {
     setActiveEventId(eventId);
+    setActiveCompanyName(companyName || null);
   };
 
   const handleEndAudit = () => {
     setActiveEventId(null);
+    setActiveCompanyName(null);
   };
 
   const handleFinishAndCloseAudit = async (duration: string) => {
@@ -688,6 +698,7 @@ const App: React.FC = () => {
         onCheckConflict={checkCitizenshipConflict}
         onDatabaseUpdate={handleDatabaseUpdate}
         isDarkMode={isDarkMode}
+        activeCompanyName={activeCompanyName}
       />
     );
   }
