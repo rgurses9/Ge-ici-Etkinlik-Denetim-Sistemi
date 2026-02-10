@@ -152,39 +152,36 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!session.isAuthenticated) return;
 
-    const loadEvents = async () => {
-      // Load Cache First
-      const cachedEvents = localStorage.getItem('geds_events_cache');
-      if (cachedEvents) {
+    // Real-time listener for EVENTS
+    // We need real-time updates here so that when Admin adds an event, all logged-in workers see it instantly.
+    // The 'events' collection is small, so the traffic cost is acceptable compared to the UX benefit.
+
+    // Load from cache first for instant render
+    const cachedEvents = localStorage.getItem('geds_events_cache');
+    if (cachedEvents) {
+      try {
         setEvents(JSON.parse(cachedEvents));
-        console.log("✅ Events loaded from cache (No Read)");
+      } catch (e) {
+        console.warn("Cache parse error", e);
       }
+    }
 
-      // We can skip fetching if we have cache, OR fetch in background to update cache.
-      // To strictly reduce reads "low days", we only fetch if no cache or on demand.
-      // But for events, we might want to check updates.
-      // Let's check updates BUT carefully.
+    const q = query(collection(db, 'events'), orderBy('startDate', 'asc'));
+    const unsubEvents = onSnapshot(q, (snapshot) => {
+      const fetchedEvents: Event[] = snapshot.docs.map(doc => doc.data() as Event);
 
-      // Actually, for "traffic reduction", let's use getDocs only.
-      const q = query(collection(db, 'events')); // simple query
-      const snapshot = await getDocs(q);
-      const fetchedEvents = snapshot.docs.map(doc => doc.data() as Event);
-
-      if (fetchedEvents.length > 0) {
+      if (fetchedEvents.length === 0) {
+        // Seed logic if necessary...
+      } else {
         setEvents(fetchedEvents);
         localStorage.setItem('geds_events_cache', JSON.stringify(fetchedEvents));
-        console.log("✅ Events synced (Read Once)");
-      } else if (!cachedEvents && fetchedEvents.length === 0) {
-        // Seed logic...
-        console.log("Seeding initial events...");
-        INITIAL_EVENTS.forEach(async (event) => {
-          await setDoc(doc(db, 'events', event.id), event);
-        });
+        console.log(`✅ Events synced real-time: ${fetchedEvents.length}`);
       }
-    };
+    }, (error) => {
+      console.error("Events listener error", error);
+    });
 
-    loadEvents();
-    // No interval polling to save reads. User must refresh page to see new events.
+    return () => unsubEvents();
   }, [session.isAuthenticated]);
 
   // Conflict Check (On-Demand)
@@ -363,10 +360,14 @@ const App: React.FC = () => {
   };
 
   const handleAddEvent = async (event: Event) => {
+    // Optimistic Update (Immediate Feedback for Creator)
+    setEvents(prev => [event, ...prev]);
+
     try {
       await setDoc(doc(db, 'events', event.id), event);
     } catch (e) {
       console.error("Error adding event: ", e);
+      // Rollback if needed, but usually next snapshot fixes it
     }
   };
 
@@ -391,29 +392,49 @@ const App: React.FC = () => {
       }
 
       await updateDoc(eventRef, cleanPayload);
+
+      // Update Cache (Success)
+      const cachedEvents = events.map(e => e.id === updatedEvent.id ? { ...e, ...updatedEvent, currentCount: e.currentCount } : e);
+      localStorage.setItem('geds_events_cache', JSON.stringify(cachedEvents));
+
     } catch (e) {
       console.error("Error updating event: ", e);
     }
   };
 
   const handleDeleteEvent = async (id: string) => {
+    // Optimistic Update
+    const remainingEvents = events.filter(e => e.id !== id);
+    setEvents(remainingEvents);
+    localStorage.setItem('geds_events_cache', JSON.stringify(remainingEvents));
+
     try {
       await deleteDoc(doc(db, 'events', id));
-      // Optionally delete related scans (batch delete usually required for many docs)
     } catch (e) {
       console.error("Error deleting event: ", e);
+      // Rollback
+      setEvents(events);
+      localStorage.setItem('geds_events_cache', JSON.stringify(events));
     }
   };
 
   const handleReactivateEvent = async (id: string) => {
+    // Optimistic Update
+    const updatedEvents = events.map(e => e.id === id ? { ...e, status: 'ACTIVE' as const, completionDuration: undefined } : e);
+    setEvents(updatedEvents);
+    localStorage.setItem('geds_events_cache', JSON.stringify(updatedEvents));
+
     try {
       const eventRef = doc(db, 'events', id);
       await updateDoc(eventRef, {
         status: 'ACTIVE',
-        completionDuration: null // Remove field (or use deleteField())
+        completionDuration: deleteField() // Correctly delete field
       });
     } catch (e) {
       console.error("Error reactivating event: ", e);
+      // Rollback
+      setEvents(events);
+      localStorage.setItem('geds_events_cache', JSON.stringify(events));
     }
   };
 
