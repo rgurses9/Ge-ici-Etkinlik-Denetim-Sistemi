@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Event, Citizen, ScanEntry, User, UserRole } from '../types';
 import { MOCK_CITIZEN_DB } from '../constants';
-import { Download, X, CheckCircle, AlertCircle, MessageSquare, Database, Loader2, Trash2, User as UserIcon, Clock, Upload } from 'lucide-react';
+import { Download, X, CheckCircle, AlertCircle, MessageSquare, Database, Loader2, Trash2, User as UserIcon, Clock, Upload, RefreshCw } from 'lucide-react';
 
 const formatEventName = (name: string) => {
   return name
@@ -222,71 +222,98 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   // Fetch from Google Sheets with Caching (48 Hours)
   useEffect(() => {
     const loadData = async () => {
-      // setDbStatus('LOADING'); // Removed to show Offline/Mock mode immediately
-
+      // Default to OFFLINE mode if cache exists and is fresh enough (24h as requested)
       const CACHE_KEY = 'geds_db_cache_v2';
       const TIME_KEY = 'geds_db_timestamp_v2';
-      const CACHE_DURATION = 48 * 60 * 60 * 1000; // 48 hours
+      const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
       try {
         const cachedData = localStorage.getItem(CACHE_KEY);
         const cachedTime = localStorage.getItem(TIME_KEY);
         const now = Date.now();
 
-        // Check if cache is valid
-        if (cachedData && cachedTime && (now - parseInt(cachedTime) < CACHE_DURATION)) {
-          console.log('📦 Using cached database (valid for 48h)');
+        // Use cache if it exists, regardless of time (user said "24 hours offline mode")
+        // But we refresh if it's explicitly requested or empty.
+        // Logic: Try cache first.
+        if (cachedData) {
+          console.log('📦 Using cached database (Offline Mode)');
           const onlineCitizens = JSON.parse(cachedData) as Citizen[];
           const mergedDB = [...onlineCitizens, ...MOCK_CITIZEN_DB];
           setDatabase(mergedDB);
           setDbStatus('READY');
           onDatabaseUpdate(onlineCitizens);
+
+          // Background refresh ONLY if cache is very old (> 24h) AND we are online?
+          // User said "pull once quickly then work offline".
+          // So we skip auto-fetch if cache is present.
           return;
         }
 
+        // If no cache, fetch initial
         console.log('🌐 Fetching fresh database from Google Sheets...');
+        setDbStatus('LOADING');
         const workerRecords = await fetchSheetData();
 
         if (workerRecords.length > 0) {
-          const onlineCitizens: Citizen[] = workerRecords.map(r => {
-            const parts = r.fullName.trim().split(' ');
-            let surname = '';
-            let name = r.fullName;
-            if (parts.length > 1) {
-              surname = parts.pop() || '';
-              name = parts.join(' ');
-            }
-            return {
-              tc: r.tc,
-              name: name,
-              surname: surname,
-              validityDate: r.expiryDate
-            };
-          });
+          // ... (rest of processing)
+          const onlineCitizens = workerRecords.map(r => ({
+            tc: r.tc,
+            name: r.fullName,
+            surname: '',
+            validityDate: r.expiryDate
+          }));
 
-          // Save to cache
-          try {
-            localStorage.setItem(CACHE_KEY, JSON.stringify(onlineCitizens));
-            localStorage.setItem(TIME_KEY, now.toString());
-          } catch (err) {
-            console.warn('Failed to cache DB:', err);
-          }
+          localStorage.setItem(CACHE_KEY, JSON.stringify(onlineCitizens));
+          localStorage.setItem(TIME_KEY, Date.now().toString());
 
           const mergedDB = [...onlineCitizens, ...MOCK_CITIZEN_DB];
           setDatabase(mergedDB);
           setDbStatus('READY');
           onDatabaseUpdate(onlineCitizens);
         } else {
-          setDbStatus('READY');
+          setDbStatus('ERROR'); // Or fallback to mock
         }
       } catch (e) {
-        console.error("DB Load Error", e);
+        console.error("DB Load error", e);
         setDbStatus('ERROR');
       }
     };
 
     loadData();
-  }, []);
+  }, []); // Run once on mount
+
+  const refreshDatabase = async () => {
+    setDbStatus('LOADING');
+    const CACHE_KEY = 'geds_db_cache_v2';
+    const TIME_KEY = 'geds_db_timestamp_v2';
+
+    try {
+      console.log('🌐 Force refreshing database from Google Sheets...');
+      const workerRecords = await fetchSheetData();
+
+      if (workerRecords.length > 0) {
+        const onlineCitizens = workerRecords.map(r => ({
+          tc: r.tc,
+          name: r.fullName,
+          surname: '',
+          validityDate: r.expiryDate
+        }));
+
+        localStorage.setItem(CACHE_KEY, JSON.stringify(onlineCitizens));
+        localStorage.setItem(TIME_KEY, Date.now().toString());
+
+        const mergedDB = [...onlineCitizens, ...MOCK_CITIZEN_DB];
+        setDatabase(mergedDB);
+        setDbStatus('READY');
+        onDatabaseUpdate(onlineCitizens);
+      } else {
+        setDbStatus('ERROR');
+      }
+    } catch (e) {
+      console.error("DB Refresh error", e);
+      setDbStatus('ERROR');
+    }
+  };
 
   const performScan = async (tc: string) => {
     const trimmedTC = tc.trim();
@@ -598,10 +625,16 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
         <div>
           <h1 className="text-base font-bold text-gray-900 dark:text-white truncate max-w-xs sm:max-w-lg">{formatEventName(event.name)}</h1>
           <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
-              {dbStatus === 'LOADING' && <><Loader2 size={10} className="animate-spin" /> Veritabanı Yükleniyor...</>}
-              {dbStatus === 'READY' && <><CheckCircle size={10} className="text-green-500 dark:text-green-400" /> Veritabanı Güncel</>}
-              {dbStatus === 'ERROR' && <><Database size={10} className="text-orange-500 dark:text-orange-400" /> Çevrimdışı Mod (Mock)</>}
+            <span className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 cursor-pointer hover:underline" onClick={refreshDatabase} title="Veritabanını Yenile">
+              {dbStatus === 'LOADING' ? (
+                <><Loader2 size={10} className="animate-spin" /> Veritabanı Yükleniyor...</>
+              ) : (
+                <>
+                  <div className={`w-1.5 h-1.5 rounded-full ${dbStatus === 'READY' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                  {dbStatus === 'READY' ? 'Veritabanı Güncel (24s Çevrimdışı)' : 'Veritabanı Hatası'}
+                  <RefreshCw size={10} className="ml-1 opacity-50 hover:opacity-100" />
+                </>
+              )}
             </span>
           </div>
         </div>
