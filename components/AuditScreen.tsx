@@ -3,13 +3,7 @@ import { Event, Citizen, ScanEntry, User, UserRole } from '../types';
 import { MOCK_CITIZEN_DB } from '../constants';
 import { Download, X, CheckCircle, AlertCircle, MessageSquare, Database, Loader2, Trash2, User as UserIcon, Clock, Upload, RefreshCw } from 'lucide-react';
 
-const formatEventName = (name: string) => {
-  return name
-    .toLocaleLowerCase('tr-TR')
-    .split(' ')
-    .map((word) => word.charAt(0).toLocaleUpperCase('tr-TR') + word.slice(1))
-    .join(' ');
-};
+
 
 // --- Provided CSV Parsing Logic ---
 
@@ -650,7 +644,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       <div className="bg-white dark:bg-gray-800 px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center sticky top-0 z-10">
         <div>
           <h1 className="text-base font-bold text-gray-900 dark:text-white truncate max-w-xs sm:max-w-lg">
-            {formatEventName(event.name)}
+            {event.name}
             {activeCompanyName && (
               <span className="ml-2 text-xs font-medium text-blue-500 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-full">
                 {activeCompanyName}
