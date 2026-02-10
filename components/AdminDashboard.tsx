@@ -171,8 +171,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const ws = wb.Sheets[wb.SheetNames[0]];
       const data: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
 
-      let addedCount = 0;
       let errorLog: string[] = [];
+
+      // --- STEP 1: Parse all rows into a temporary structure ---
+      interface ParsedRow {
+        eventName: string;
+        companyName: string;
+        target: number;
+        startDate: Date;
+        endDate: Date;
+      }
+
+      const parsedRows: ParsedRow[] = [];
 
       for (let i = 0; i < data.length; i++) {
         const row = data[i];
@@ -180,57 +190,47 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         const col0 = String(row[0]).trim(); // Date
         const col1 = String(row[1]).trim(); // Time
-        const col2 = String(row[2]).trim(); // Name
+        const col2 = String(row[2]).trim(); // Event Name
+        const col4 = String(row[4] || '').trim(); // Company Name (E sütunu)
 
         // Skip lines that don't look like data (no digits in date col)
-        if (!/\d/.test(col0)) {
-          continue;
-        }
+        if (!/\d/.test(col0)) continue;
 
         // Date Parse (Flexible Logic for M/D/YY, DD.MM.YYYY, YYYY-MM-DD)
-        let day, month, year;
+        let day: number, month: number, year: number;
         const parts = col0.split(/[./-]/);
 
         if (parts.length === 3) {
           const p1 = parseInt(parts[0]);
           const p2 = parseInt(parts[1]);
-          let p3 = parseInt(parts[2]); // Year part usually
+          let p3 = parseInt(parts[2]);
 
-          // 1. Normalize Year (e.g. 25 -> 2025)
           if (p3 < 100) p3 += 2000;
 
-          // 2. Normalize positions
           if (p1 > 1000) {
-            // YYYY-MM-DD pattern
             year = p1; month = p2 - 1; day = p3;
           } else {
-            // DD.MM.YYYY or MM/DD/YYYY pattern
             if (p1 > 12) {
-              // First part is Day (e.g. 20.09.2025)
               day = p1; month = p2 - 1; year = p3;
             } else if (p2 > 12) {
-              // Second part is Day (e.g. 9/20/25)
               month = p1 - 1; day = p2; year = p3;
             } else {
-              // Ambiguous (e.g. 05.04.2025 or 4/5/25)
-              // Heuristic: Dot usually means TR format (DD.MM), Slash usually means US (MM/DD) from Excel export
               if (col0.includes('.')) {
                 day = p1; month = p2 - 1; year = p3;
               } else {
-                // Likely MM/DD/YY
                 month = p1 - 1; day = p2; year = p3;
               }
             }
           }
         } else {
-          errorLog.push(`Satır ${i + 1}: Tarih formatı geçersiz veya tanınmadı(${col0})`);
+          errorLog.push(`Satır ${i + 1}: Tarih formatı geçersiz (${col0})`);
           continue;
         }
 
         // Time Parse
-        const timeMatches = Array.from(col1.matchAll(/(\d{1,2})[:.](\d{2})/g));
+        const timeMatches = Array.from(col1.matchAll(/(\d{1,2})[:.:](\d{2})/g));
         if (timeMatches.length < 2) {
-          errorLog.push(`Satır ${i + 1}: Saat aralığı bulunamadı(${col1})`);
+          errorLog.push(`Satır ${i + 1}: Saat aralığı bulunamadı (${col1})`);
           continue;
         }
 
@@ -242,50 +242,99 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         // Target Logic (Check Col 6 [F] then Col 7 [G])
         let target = parseInt(row[5]);
         if (isNaN(target)) target = parseInt(row[6]);
-        if (isNaN(target)) target = 50; // Default
+        if (isNaN(target)) target = 50;
 
-        // Create Date Objects
-        const startDateObj = new Date(year, month, day, startH, startM);
-        const endDateObj = new Date(year, month, day, endH, endM);
+        const startDateObj = new Date(year!, month!, day!, startH, startM);
+        const endDateObj = new Date(year!, month!, day!, endH, endM);
 
         if (endDateObj < startDateObj) {
           endDateObj.setDate(endDateObj.getDate() + 1);
         }
 
-        const toLocalISO = (d: Date) => {
-          const pad = (n: number) => n.toString().padStart(2, '0');
-          return `${d.getFullYear()} -${pad(d.getMonth() + 1)} -${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())} `;
-        };
-
         // Format Date Part for Event Name (DD.MM.YYYY)
-        const formattedDatePart = `${String(day).padStart(2, '0')}.${String(month + 1).padStart(2, '0')}.${year} `;
-        const eventName = `${formattedDatePart} ${col2} `;
+        const formattedDatePart = `${String(day!).padStart(2, '0')}.${String(month! + 1).padStart(2, '0')}.${year!}`;
+        const eventName = `${formattedDatePart} ${col2}`;
 
-        const newEvent: Event = {
-          id: Date.now().toString() + Math.random().toString().slice(2, 6),
-          name: eventName,
-          targetCount: target,
-          currentCount: 0,
-          startDate: toLocalISO(startDateObj),
-          endDate: toLocalISO(endDateObj),
-          status: 'ACTIVE'
-        };
+        parsedRows.push({
+          eventName: eventName.trim(),
+          companyName: col4,
+          target,
+          startDate: startDateObj,
+          endDate: endDateObj,
+        });
+      }
 
-        console.log(`Adding event: ${eventName} `, newEvent);
+      // --- STEP 2: Group by event name ---
+      const grouped: Record<string, ParsedRow[]> = {};
+      parsedRows.forEach(row => {
+        if (!grouped[row.eventName]) grouped[row.eventName] = [];
+        grouped[row.eventName].push(row);
+      });
 
+      // --- STEP 3: Create events (merge duplicates) ---
+      let addedCount = 0;
+      const toLocalISO = (d: Date) => {
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      };
 
-        onAddEvent(newEvent);
-        addedCount++;
+      for (const [eventName, rows] of Object.entries(grouped)) {
+        // Find earliest start and latest end
+        const earliestStart = new Date(Math.min(...rows.map(r => r.startDate.getTime())));
+        const latestEnd = new Date(Math.max(...rows.map(r => r.endDate.getTime())));
+
+        if (rows.length > 1) {
+          // MERGE: Multiple rows with same event name → one event with multiple companies
+          const companies: CompanyTarget[] = rows.map(r => ({
+            name: r.companyName || 'Şirket Belirtilmemiş',
+            count: r.target
+          }));
+          const totalTarget = companies.reduce((sum, c) => sum + c.count, 0);
+
+          const newEvent: Event = {
+            id: Date.now().toString() + Math.random().toString().slice(2, 6),
+            name: eventName,
+            targetCount: totalTarget,
+            currentCount: 0,
+            startDate: toLocalISO(earliestStart),
+            endDate: toLocalISO(latestEnd),
+            status: 'ACTIVE',
+            companies: companies
+          };
+
+          console.log(`🔀 Merged event: ${eventName} (${rows.length} şirket, toplam hedef: ${totalTarget})`);
+          onAddEvent(newEvent);
+          addedCount++;
+        } else {
+          // Single row → normal event (with company if exists)
+          const row = rows[0];
+          const newEvent: Event = {
+            id: Date.now().toString() + Math.random().toString().slice(2, 6),
+            name: eventName,
+            targetCount: row.target,
+            currentCount: 0,
+            startDate: toLocalISO(earliestStart),
+            endDate: toLocalISO(latestEnd),
+            status: 'ACTIVE',
+            companies: row.companyName ? [{ name: row.companyName, count: row.target }] : undefined
+          };
+
+          console.log(`➕ Single event: ${eventName}`);
+          onAddEvent(newEvent);
+          addedCount++;
+        }
         await new Promise(r => setTimeout(r, 10));
       }
 
       if (addedCount > 0) {
-        alert(`${addedCount} etkinlik başarıyla eklendi.`);
+        const mergedCount = Object.values(grouped).filter(g => g.length > 1).length;
+        const mergedMsg = mergedCount > 0 ? `\n(${mergedCount} etkinlik aynı isimle birleştirildi)` : '';
+        alert(`${addedCount} etkinlik başarıyla eklendi.${mergedMsg}`);
       } else {
         const errorMsg = errorLog.length > 0
-          ? `Tespit edilen hatalar: \n${errorLog.slice(0, 5).join('\n')} `
+          ? `Tespit edilen hatalar:\n${errorLog.slice(0, 5).join('\n')}`
           : 'Excel formatı uygun görünmüyor veya veri satırı bulunamadı.';
-        alert(`Hiçbir etkinlik oluşturulamadı.\n${errorMsg} `);
+        alert(`Hiçbir etkinlik oluşturulamadı.\n${errorMsg}`);
       }
 
     } catch (err) {
