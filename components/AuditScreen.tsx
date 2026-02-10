@@ -3,6 +3,14 @@ import { Event, Citizen, ScanEntry, User, UserRole } from '../types';
 import { MOCK_CITIZEN_DB } from '../constants';
 import { Download, X, CheckCircle, AlertCircle, MessageSquare, Database, Loader2, Trash2, User as UserIcon, Clock, Upload } from 'lucide-react';
 
+const formatEventName = (name: string) => {
+  return name
+    .toLocaleLowerCase('tr-TR')
+    .split(' ')
+    .map((word) => word.charAt(0).toLocaleUpperCase('tr-TR') + word.slice(1))
+    .join(' ');
+};
+
 // --- Provided CSV Parsing Logic ---
 
 interface WorkerRecord {
@@ -588,7 +596,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       {/* Top Bar */}
       <div className="bg-white dark:bg-gray-800 px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center sticky top-0 z-10">
         <div>
-          <h1 className="text-base font-bold text-gray-900 dark:text-white truncate max-w-xs sm:max-w-lg">{event.name}</h1>
+          <h1 className="text-base font-bold text-gray-900 dark:text-white truncate max-w-xs sm:max-w-lg">{formatEventName(event.name)}</h1>
           <div className="flex items-center gap-2 mt-0.5">
             <span className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
               {dbStatus === 'LOADING' && <><Loader2 size={10} className="animate-spin" /> Veritabanı Yükleniyor...</>}

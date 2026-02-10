@@ -3,6 +3,14 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Event, User, UserRole, ScanEntry, CompanyTarget } from '../types';
 import { Plus, Users, Calendar, Play, LogOut, Eye, Trash2, Edit, UserCog, Key, ShieldCheck, User as UserIcon, Activity, Archive, Download, RefreshCw, Clock, Wifi, X, CheckCircle, Sun, Moon, Folder, ChevronDown, ChevronUp, AlertTriangle, AlertCircle, Upload } from 'lucide-react';
 
+const formatEventName = (name: string) => {
+  return name
+    .toLocaleLowerCase('tr-TR')
+    .split(' ')
+    .map((word) => word.charAt(0).toLocaleUpperCase('tr-TR') + word.slice(1))
+    .join(' ');
+};
+
 interface AdminDashboardProps {
   currentUser: User;
   events: Event[];
@@ -49,27 +57,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // New Event Form State
   const [newEventName, setNewEventName] = useState('');
-  const [newEventTarget, setNewEventTarget] = useState(50);
+  const [newEventTarget, setNewEventTarget] = useState(5);
   const [newEventStart, setNewEventStart] = useState('');
   const [newEventEnd, setNewEventEnd] = useState('');
 
   // Multi-Company State
   const [isMultiCompany, setIsMultiCompany] = useState(false);
-  const [companyCountInput, setCompanyCountInput] = useState(1);
+  const [companyCountInput, setCompanyCountInput] = useState<number | string>(1);
   const [companyTargets, setCompanyTargets] = useState<CompanyTarget[]>([]);
 
   // Effect to manage company inputs array
   useEffect(() => {
     if (isMultiCompany) {
+      const count = typeof companyCountInput === 'string' ? 0 : companyCountInput;
       setCompanyTargets(prev => {
         const currentLength = prev.length;
-        if (companyCountInput > currentLength) {
+        if (count > currentLength) {
           // Add new empty targets
-          const newItems = Array(companyCountInput - currentLength).fill(null).map(() => ({ name: '', count: 0 }));
+          const newItems = Array(count - currentLength).fill(null).map(() => ({ name: '', count: 0 }));
           return [...prev, ...newItems];
-        } else if (companyCountInput < currentLength) {
+        } else if (count < currentLength) {
           // Trim array
-          return prev.slice(0, companyCountInput);
+          return prev.slice(0, count);
         }
         return prev;
       });
@@ -138,7 +147,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       onAddEvent(newEvent);
     }
     setNewEventName('');
-    setNewEventTarget(50);
+    setNewEventTarget(5);
     setNewEventStart('');
     setNewEventEnd('');
     setIsMultiCompany(false);
@@ -538,7 +547,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2">
-              <h2 className="text-2xl font-extrabold text-gray-800 dark:text-white tracking-tight">
+              <h2 className="text-lg font-extrabold text-gray-800 dark:text-white tracking-tight">
                 {activeTab === 'EVENTS' ? `Aktif Denetimler (${activeEvents.length})` : 'Sistem Kullanıcıları'}
               </h2>
             </div>
@@ -601,14 +610,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {activeTab === 'EVENTS' ? (
           <>
             {/* Active Event List */}
-            <div className="space-y-4">
+            <div className="space-y-2">
               {activeEvents.map((event) => {
                 const isLate = new Date(event.startDate) < new Date();
                 const textColor = isLate ? 'text-red-500 dark:text-red-400' : 'text-gray-900 dark:text-white';
                 const realCount = event.currentCount;
 
                 return (
-                  <div key={event.id} className={`bg-white dark:bg-[#0f172a] border ${isLate ? 'border-red-500/20' : 'border-gray-200 dark:border-gray-800/80'} p-4 rounded-xl shadow-sm hover:shadow-md transition-all`}>
+                  <div key={event.id} className={`bg-white dark:bg-[#0f172a] border ${isLate ? 'border-red-500/20' : 'border-gray-200 dark:border-gray-800/80'} p-2.5 rounded-xl shadow-sm hover:shadow-md transition-all`}>
                     <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
                       <div className="flex-1 space-y-2">
                         {isLate && realCount === 0 && (
@@ -617,8 +626,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <span>VERİ GİRİŞİ YAPILMAMIŞ</span>
                           </div>
                         )}
-                        <h4 className={`font-bold ${textColor} text-xs sm:text-sm`}>
-                          {event.name}
+                        <h4 className={`font-bold ${textColor} text-xs`}>
+                          {formatEventName(event.name)}
                         </h4>
 
                         <div className="flex flex-wrap items-center gap-2">
@@ -712,14 +721,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       const isLate = new Date(event.startDate) < new Date();
 
                       return (
-                        <div key={event.id} className="bg-white dark:bg-[#0f172a] border border-gray-200 dark:border-gray-800/80 p-4 rounded-xl shadow-sm hover:shadow-md transition-all">
+                        <div key={event.id} className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800/80 p-4 rounded-xl shadow-sm hover:shadow-md transition-all">
                           <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
                             <div className="flex-1 space-y-2">
                               <div className="flex items-center gap-2">
-                                <h4 className="font-bold text-gray-900 dark:text-white text-xs sm:text-sm">
-                                  {event.name}
+                                <h4 className="font-bold text-gray-900 dark:text-white text-xs">
+                                  {formatEventName(event.name)}
                                 </h4>
-                                <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 text-[10px] font-bold rounded-full border border-blue-200 dark:border-blue-800">
+                                <span className="px-2 py-0.5 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 text-[10px] font-bold rounded-full border border-green-200 dark:border-green-800">
                                   DEVAM EDİYOR
                                 </span>
                               </div>
@@ -739,14 +748,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <div className="flex items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400 font-medium tracking-tight">
                                 <span>Hedef: {event.targetCount}</span>
                                 <span className="text-gray-300 dark:text-gray-600 mx-1">•</span>
-                                <span className="text-blue-600 dark:text-blue-400 font-bold">
+                                <span className="text-green-600 dark:text-green-400 font-bold">
                                   {realCount} / {event.targetCount}
                                 </span>
                               </div>
 
                               <div className="w-full max-w-sm bg-gray-100 dark:bg-gray-800 h-1 rounded-full overflow-hidden">
                                 <div
-                                  className="bg-blue-600 h-full transition-all duration-500"
+                                  className="bg-green-600 h-full transition-all duration-500"
                                   style={{ width: `${Math.min(100, (realCount / event.targetCount) * 100)}%` }}
                                 ></div>
                               </div>
@@ -865,10 +874,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 : "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 opacity-75 hover:opacity-100";
 
                               return (
-                                <div key={event.id} className={`rounded-lg p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 transition ${cardClass}`}>
+                                <div key={event.id} className={`rounded-lg p-2.5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 transition ${cardClass}`}>
                                   <div className="w-full sm:w-auto">
-                                    <h4 className="font-bold text-gray-800 dark:text-white text-xs sm:text-sm flex flex-wrap gap-1 items-center">
-                                      {event.name}
+                                    <h4 className="font-bold text-gray-800 dark:text-white text-xs flex flex-wrap gap-1 items-center">
+                                      {formatEventName(event.name)}
                                       {isRecent && hasUnknownPersonnel && (
                                         <span className="flex items-center gap-1 text-[10px] bg-[#3f1616] text-red-500 px-2 py-0.5 rounded-full border border-red-900/50 whitespace-nowrap ml-2">
                                           <AlertTriangle size={10} />
@@ -1082,11 +1091,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div>
                       <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1 uppercase">Şirket Sayısı</label>
                       <input
-                        type="number"
-                        min="1"
-                        max="20"
+                        type="text"
                         value={companyCountInput}
-                        onChange={(e) => setCompanyCountInput(parseInt(e.target.value) || 1)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setCompanyCountInput(val === '' ? ('' as any) : parseInt(val) || 0);
+                        }}
+                        onBlur={() => {
+                          if (companyCountInput === '' || Number(companyCountInput) < 1) setCompanyCountInput(1);
+                        }}
                         className="w-full bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded px-3 py-2 border border-gray-300 dark:border-gray-600 text-sm focus:ring-2 focus:ring-secondary-500 outline-none"
                       />
                     </div>
@@ -1401,7 +1414,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
               <div className="flex justify-between items-center p-6 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50 rounded-t-2xl">
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">{viewingEvent.name}</h2>
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">{formatEventName(viewingEvent.name)}</h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400">Katılımcı Listesi</p>
                 </div>
                 <button
