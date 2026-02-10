@@ -22,6 +22,7 @@ export interface Event {
   status: 'ACTIVE' | 'PASSIVE';
   completionDuration?: string; // "HH:MM:SS" format
   companies?: CompanyTarget[];
+  userCounts?: Record<string, number>; // Added for efficient dashboard display without fetching all scans
 }
 
 export interface CompanyTarget {
