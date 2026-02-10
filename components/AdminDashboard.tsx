@@ -614,7 +614,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {activeEvents.map((event) => {
                 const isLate = new Date(event.startDate) < new Date();
                 const textColor = isLate ? 'text-red-500 dark:text-red-400' : 'text-gray-900 dark:text-white';
-                const realCount = scannedEntries[event.id]?.length || event.currentCount;
+                const realCount = event.currentCount;
 
                 return (
                   <div key={event.id} className={`bg-white dark:bg-[#0f172a] border ${isLate ? 'border-red-500/20' : 'border-gray-200 dark:border-gray-800/80'} p-2.5 rounded-xl shadow-sm hover:shadow-md transition-all`}>

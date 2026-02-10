@@ -17,7 +17,8 @@ import {
   orderBy,
   writeBatch,
   getDocs,
-  where
+  where,
+  increment
 } from 'firebase/firestore';
 
 const App: React.FC = () => {
@@ -266,38 +267,25 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!session.isAuthenticated) return;
 
-    // Get IDs of all ACTIVE events
-    const activeIds = events
-      .filter(e => e.status === 'ACTIVE')
-      .map(e => e.id);
+    // Optimization: ONLY listen to the event the user is actively auditing
+    // Dashboard users don't need the full list of names to see the count update.
+    // They will see the count update via the 'events' collection listener.
+    const targetEventId = activeEventId;
 
-    // Ensure we always include the current auditing event if it's set
-    const combinedIds = [...new Set([...activeIds, ...(activeEventId ? [activeEventId] : [])])];
-
-    // Firestore 'in' query limit is 10. For more events, we'd need multiple listeners.
-    // We prioritize the current activeEventId if it exists.
-    let targetEventIds: string[] = [];
-    if (activeEventId) {
-      targetEventIds = [activeEventId, ...combinedIds.filter(id => id !== activeEventId)].slice(0, 10);
-    } else {
-      targetEventIds = combinedIds.slice(0, 10);
-    }
-
-    if (targetEventIds.length === 0) {
+    if (!targetEventId) {
+      setScannedEntries({}); // Clear if no active event
       return;
     }
 
-    // Stability check: only re-subscribe if the set of IDs changed
-    const idsKey = targetEventIds.sort().join(',');
-    const lastIdsKey = (window as any)._lastScannedIdsKey;
-    if (lastIdsKey === idsKey) return;
-    (window as any)._lastScannedIdsKey = idsKey;
+    // Stability check
+    if ((window as any)._lastScannedId === targetEventId) return;
+    (window as any)._lastScannedId = targetEventId;
 
-    console.log(`📡 Starting real - time listener for scanned entries: ${targetEventIds.length} events`);
+    console.log(`📡 Starting real-time listener for ACTIVE event: ${targetEventId}`);
 
     const q = query(
       collection(db, 'scanned_entries'),
-      where('eventId', 'in', targetEventIds)
+      where('eventId', '==', targetEventId)
     );
 
     const unsubEntries = onSnapshot(q, (snapshot) => {
@@ -306,37 +294,27 @@ const App: React.FC = () => {
         .map(doc => doc.data() as ScanEntry)
         .sort((a, b) => (b.serverTimestamp || 0) - (a.serverTimestamp || 0));
 
-      // Build update object
-      const updateObj: Record<string, ScanEntry[]> = {};
-      targetEventIds.forEach(eid => updateObj[eid] = []);
-      fetchedEntries.forEach(entry => {
-        if (updateObj[entry.eventId]) {
-          updateObj[entry.eventId].push(entry);
-        }
-      });
-
-      // Update state
-      setScannedEntries(prev => ({ ...prev, ...updateObj }));
+      // Build update object for the single event
+      setScannedEntries({ [targetEventId]: fetchedEntries });
 
       // Update Cache
       try {
         const currentCacheStr = localStorage.getItem('geds_scanned_entries_cache');
         let newCache = currentCacheStr ? JSON.parse(currentCacheStr) : {};
-        Object.assign(newCache, updateObj);
+        newCache[targetEventId] = fetchedEntries;
         localStorage.setItem('geds_scanned_entries_cache', JSON.stringify(newCache));
       } catch (e) {
         console.warn("Cache update error", e);
       }
 
-      console.log(`✅ Scanned entries synced for ${targetEventIds.length} events(${fetchedEntries.length} total entries)`);
+      console.log(`✅ Scanned entries synced for event ${targetEventId} (${fetchedEntries.length} total entries)`);
     }, (error) => {
       console.error("Scanned entries listener error", error);
     });
 
     return () => {
-      console.log("🛑 Cleaning up scanned entries listener");
       unsubEntries();
-      (window as any)._lastScannedIdsKey = null;
+      (window as any)._lastScannedId = null;
     };
   }, [session.isAuthenticated, activeEventId, events]); // Re-run if events list or active event changes
 
@@ -494,15 +472,10 @@ const App: React.FC = () => {
       // 2. Add Entry
       await setDoc(doc(db, 'scanned_entries', uniqueId), entryWithUniqueId);
 
-      // 3. Increment Event Count (Optimistic or Transactional could be better, but simple update works here)
-      // We use Firestore's atomic increment for better reliability if possible, 
-      // but for now we follow the existing pattern.
-      const event = events.find(e => e.id === entry.eventId);
-      if (event) {
-        await updateDoc(doc(db, 'events', entry.eventId), {
-          currentCount: event.currentCount + 1
-        });
-      }
+      // 3. Increment Event Count Atomically (IMPORTANT for read/write balance)
+      await updateDoc(doc(db, 'events', entry.eventId), {
+        currentCount: increment(1)
+      });
     } catch (e) {
       console.error("Error adding scan: ", e);
     }
