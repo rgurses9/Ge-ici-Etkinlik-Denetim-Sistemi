@@ -526,7 +526,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2">
-              <h2 className="text-xl font-bold text-gray-800 dark:text-white">
+              <h2 className="text-2xl font-extrabold text-gray-800 dark:text-white tracking-tight">
                 {activeTab === 'EVENTS' ? 'Aktif Denetimler' : 'Sistem Kullanıcıları'}
               </h2>
               {activeTab === 'EVENTS' && (
@@ -538,7 +538,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               )}
             </div>
             {activeTab === 'EVENTS' && activeEvents.length > 0 && (
-              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+              <p className="text-sm font-bold text-gray-600 dark:text-gray-400 mt-0.5">
                 Aktif Etkinlikler ({activeEvents.length})
               </p>
             )}
@@ -608,40 +608,40 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 const realCount = event.currentCount;
 
                 return (
-                  <div key={event.id} className={`bg-white dark:bg-[#0f172a] border ${isLate ? 'border-red-500/20' : 'border-gray-200 dark:border-gray-800'} p-4 rounded-xl shadow-sm hover:shadow-md transition-all`}>
+                  <div key={event.id} className={`bg-white dark:bg-[#0f172a] border ${isLate ? 'border-red-500/20' : 'border-gray-200 dark:border-gray-800/80'} p-5 rounded-xl shadow-sm hover:shadow-md transition-all`}>
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                      <div className="flex-1 space-y-3">
+                      <div className="flex-1 space-y-3.5">
                         {isLate && realCount === 0 && (
                           <div className="flex items-center gap-1.5 text-red-600 dark:text-red-400 text-[10px] font-bold animate-pulse">
                             <AlertTriangle size={12} />
                             <span>VERİ GİRİŞİ YAPILMAMIŞ</span>
                           </div>
                         )}
-                        <h4 className={`font-bold ${textColor} text-base sm:text-lg`}>
+                        <h4 className={`font-bold ${textColor} text-sm sm:text-base`}>
                           {event.name}
                         </h4>
 
                         <div className="flex flex-wrap items-center gap-2">
-                          <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[10px] rounded-md border border-gray-200 dark:border-gray-700 font-medium">
+                          <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-100 dark:bg-[#1e293b]/50 text-gray-500 dark:text-gray-400 text-[10px] rounded border border-gray-200 dark:border-gray-700/50 font-medium">
                             <Clock size={10} />
                             {formatDateTime(event.startDate)}
                           </div>
                           <span className="text-gray-300 dark:text-gray-600 hidden sm:inline">-</span>
-                          <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[10px] rounded-md border border-gray-200 dark:border-gray-700 font-medium">
+                          <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-100 dark:bg-[#1e293b]/50 text-gray-500 dark:text-gray-400 text-[10px] rounded border border-gray-200 dark:border-gray-700/50 font-medium">
                             <Clock size={10} />
                             {formatDateTime(event.endDate)}
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 font-medium tracking-tight">
+                        <div className="flex items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400 font-medium tracking-tight">
                           <span>Hedef: {event.targetCount}</span>
-                          <span className="text-gray-300 dark:text-gray-600">•</span>
+                          <span className="text-gray-300 dark:text-gray-600 mx-1">•</span>
                           <span className={realCount > 0 ? "text-blue-600 dark:text-blue-400 font-bold" : ""}>
                             {realCount} / {event.targetCount}
                           </span>
                         </div>
 
-                        <div className="w-full max-w-sm bg-gray-100 dark:bg-gray-800 h-1.5 rounded-full overflow-hidden">
+                        <div className="w-full max-w-sm bg-gray-100 dark:bg-gray-800 h-1 rounded-full overflow-hidden">
                           <div
                             className="bg-blue-600 h-full transition-all duration-500"
                             style={{ width: `${Math.min(100, (realCount / event.targetCount) * 100)}%` }}
@@ -649,36 +649,36 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                      <div className="flex items-center gap-2 shrink-0 self-center">
                         <button
                           onClick={() => handleStartAuditClick(event.id)}
-                          className="p-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-all active:scale-95 flex items-center justify-center"
+                          className="p-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-all active:scale-95 flex items-center justify-center group/play"
                           title="Denetimi Başlat"
                         >
-                          <Play size={18} className="fill-current" />
+                          <Play size={20} className="fill-current" />
                         </button>
                         <button
                           onClick={() => setViewingEvent(event)}
-                          className="p-2.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-all"
+                          className="p-2.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-all"
                           title="Listeyi Gör"
                         >
-                          <Eye size={18} />
+                          <Eye size={20} />
                         </button>
                         {isAdmin && (
                           <>
                             <button
                               onClick={() => handleStartEditEvent(event)}
-                              className="p-2.5 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-lg transition-all"
+                              className="p-2.5 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-lg transition-all"
                               title="Düzenle"
                             >
-                              <Edit size={18} />
+                              <Edit size={20} />
                             </button>
                             <button
                               onClick={() => onDeleteEvent(event.id)}
-                              className="p-2.5 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg transition-all"
+                              className="p-2.5 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-lg transition-all"
                               title="Sil"
                             >
-                              <Trash2 size={18} />
+                              <Trash2 size={20} />
                             </button>
                           </>
                         )}
@@ -712,11 +712,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       const isLate = new Date(event.startDate) < new Date();
 
                       return (
-                        <div key={event.id} className="bg-white dark:bg-[#0f172a] border border-blue-900/20 p-4 rounded-xl shadow-sm hover:shadow-md transition-all">
+                        <div key={event.id} className="bg-white dark:bg-[#0f172a] border border-gray-200 dark:border-gray-800/80 p-5 rounded-xl shadow-sm hover:shadow-md transition-all">
                           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                            <div className="flex-1 space-y-3">
+                            <div className="flex-1 space-y-3.5">
                               <div className="flex items-center gap-2">
-                                <h4 className="font-bold text-gray-900 dark:text-white text-base sm:text-lg">
+                                <h4 className="font-bold text-gray-900 dark:text-white text-sm sm:text-base">
                                   {event.name}
                                 </h4>
                                 <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 text-[10px] font-bold rounded-full border border-blue-200 dark:border-blue-800">
@@ -725,26 +725,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               </div>
 
                               <div className="flex flex-wrap items-center gap-2">
-                                <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[10px] rounded-md border border-gray-200 dark:border-gray-700 font-medium">
+                                <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-100 dark:bg-[#1e293b]/50 text-gray-500 dark:text-gray-400 text-[10px] rounded border border-gray-200 dark:border-gray-700/50 font-medium">
                                   <Clock size={10} />
                                   {formatDateTime(event.startDate)}
                                 </div>
                                 <span className="text-gray-300 dark:text-gray-600 hidden sm:inline">-</span>
-                                <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[10px] rounded-md border border-gray-200 dark:border-gray-700 font-medium">
+                                <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-100 dark:bg-[#1e293b]/50 text-gray-500 dark:text-gray-400 text-[10px] rounded border border-gray-200 dark:border-gray-700/50 font-medium">
                                   <Clock size={10} />
                                   {formatDateTime(event.endDate)}
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 font-medium tracking-tight">
+                              <div className="flex items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400 font-medium tracking-tight">
                                 <span>Hedef: {event.targetCount}</span>
-                                <span className="text-gray-300 dark:text-gray-600">•</span>
+                                <span className="text-gray-300 dark:text-gray-600 mx-1">•</span>
                                 <span className="text-blue-600 dark:text-blue-400 font-bold">
                                   {realCount} / {event.targetCount}
                                 </span>
                               </div>
 
-                              <div className="w-full max-w-sm bg-gray-100 dark:bg-gray-800 h-1.5 rounded-full overflow-hidden">
+                              <div className="w-full max-w-sm bg-gray-100 dark:bg-gray-800 h-1 rounded-full overflow-hidden">
                                 <div
                                   className="bg-blue-600 h-full transition-all duration-500"
                                   style={{ width: `${Math.min(100, (realCount / event.targetCount) * 100)}%` }}
@@ -752,36 +752,36 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                            <div className="flex items-center gap-2 shrink-0 self-center">
                               <button
                                 onClick={() => handleStartAuditClick(event.id)}
                                 className="p-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-all active:scale-95 flex items-center justify-center"
                                 title="Denetime Devam Et"
                               >
-                                <Play size={18} className="fill-current" />
+                                <Play size={20} className="fill-current" />
                               </button>
                               <button
                                 onClick={() => setViewingEvent(event)}
-                                className="p-2.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-all"
+                                className="p-2.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-all"
                                 title="Listeyi Gör"
                               >
-                                <Eye size={18} />
+                                <Eye size={20} />
                               </button>
                               {isAdmin && (
                                 <>
                                   <button
                                     onClick={() => handleStartEditEvent(event)}
-                                    className="p-2.5 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-lg transition-all"
+                                    className="p-2.5 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-lg transition-all"
                                     title="Düzenle"
                                   >
-                                    <Edit size={18} />
+                                    <Edit size={20} />
                                   </button>
                                   <button
                                     onClick={() => onDeleteEvent(event.id)}
-                                    className="p-2.5 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg transition-all"
+                                    className="p-2.5 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-lg transition-all"
                                     title="Sil"
                                   >
-                                    <Trash2 size={18} />
+                                    <Trash2 size={20} />
                                   </button>
                                 </>
                               )}
