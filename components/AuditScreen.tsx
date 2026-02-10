@@ -27,8 +27,18 @@ const CSV_EXPORT_URL = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}
 
 async function fetchSheetData(): Promise<WorkerRecord[]> {
   try {
-    console.log('Fetching database from Google Sheets...');
-    const response = await fetch(CSV_EXPORT_URL);
+    // Add timestamp to bypass any intermediate caching
+    const timestamp = new Date().getTime();
+    const urlWithCacheBuster = `${CSV_EXPORT_URL}&t=${timestamp}`;
+
+    console.log('Fetching database from Google Sheets (Direct)...');
+    const response = await fetch(urlWithCacheBuster, {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      }
+    });
 
     if (!response.ok) {
       console.error('Failed to fetch Google Sheet CSV:', response.statusText);
@@ -36,6 +46,9 @@ async function fetchSheetData(): Promise<WorkerRecord[]> {
     }
 
     const text = await response.text();
+
+    // Debug: Log the first 50 chars to see encoding/headers
+    console.log('CSV Preview (First 50 chars):', text.trim().substring(0, 50));
 
     // Check for HTML response (usually means the sheet is not published to web/public)
     if (text.trim().startsWith('<!DOCTYPE html>') || text.includes('<html')) {
@@ -244,31 +257,9 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     inputRef.current?.focus();
   }, []);
 
-  // Fetch from Google Sheets with Caching (48 Hours)
-  const loadData = async (force = false) => {
-    const CACHE_KEY = 'geds_db_cache_v2';
-    const TIME_KEY = 'geds_db_timestamp_v2';
-    const CACHE_DURATION = 24 * 60 * 60 * 1000;
-
+  // Fetch from Google Sheets - NO CACHE as requested
+  const loadData = async () => {
     try {
-      if (!force) {
-        const cachedData = localStorage.getItem(CACHE_KEY);
-        const cachedTime = localStorage.getItem(TIME_KEY);
-        const now = Date.now();
-
-        if (cachedData && cachedTime) {
-          const age = now - parseInt(cachedTime);
-          if (age < CACHE_DURATION) {
-            console.log('📦 Using cached database');
-            const onlineCitizens = JSON.parse(cachedData) as Citizen[];
-            setDatabase([...onlineCitizens, ...MOCK_CITIZEN_DB]);
-            setDbStatus('READY');
-            onDatabaseUpdate(onlineCitizens);
-            return;
-          }
-        }
-      }
-
       console.log('🌐 Fetching fresh database from Google Sheets...');
       setDbStatus('LOADING');
       const workerRecords = await fetchSheetData();
@@ -283,33 +274,18 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
           validityDate: r.expiryDate
         }));
 
-        try {
-          localStorage.setItem(CACHE_KEY, JSON.stringify(onlineCitizens));
-          localStorage.setItem(TIME_KEY, Date.now().toString());
-        } catch (storageError) {
-          if (storageError instanceof DOMException && (storageError.name === 'QuotaExceededError' || storageError.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
-            console.warn("⚠️ LocalStorage dolu! Eski veriler temizleniyor...");
-            localStorage.removeItem('geds_scanned_entries_cache'); // Clear other cache to make room
-            try {
-              localStorage.setItem(CACHE_KEY, JSON.stringify(onlineCitizens));
-            } catch (innerError) {
-              console.error("❌ Veritabanı çok büyük, tarayıcı hafızasına sığmıyor.");
-            }
-          }
-        }
-
         setDatabase([...onlineCitizens, ...MOCK_CITIZEN_DB]);
         setDbStatus('READY');
         onDatabaseUpdate(onlineCitizens);
       } else {
-        console.warn("Worker fetch returned empty");
+        console.warn("Worker fetch returned empty. Using local mock data.");
         setDatabase(MOCK_CITIZEN_DB);
-        setDbStatus('READY');
+        setDbStatus('ERROR');
       }
     } catch (e) {
       console.error("DB Load error", e);
       setDatabase(MOCK_CITIZEN_DB);
-      setDbStatus('READY');
+      setDbStatus('ERROR');
     }
   };
 
@@ -317,9 +293,6 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     loadData();
   }, []);
 
-  const handleRefreshDatabase = () => {
-    loadData(true);
-  };
 
 
 
@@ -651,13 +624,6 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
                 <>
                   <div className={`w-1.5 h-1.5 rounded-full ${dbStatus === 'READY' ? 'bg-green-500' : 'bg-red-500'}`}></div>
                   {dbStatus === 'READY' ? 'Veritabanı Hazır' : 'Veritabanı Hatası'}
-                  <button
-                    onClick={handleRefreshDatabase}
-                    className="ml-2 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors text-blue-500"
-                    title="Veritabanını Yenile"
-                  >
-                    <RefreshCw size={12} className="hover:rotate-180 transition-transform" />
-                  </button>
                 </>
               )}
             </span>
