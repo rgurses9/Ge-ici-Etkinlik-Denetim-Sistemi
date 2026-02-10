@@ -786,7 +786,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
         {/* List */}
         {scannedList.length > 0 ? (
           <div className="w-full bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-center text-xs">
               <thead className="bg-gray-50 dark:bg-gray-900/30 border-b border-gray-200 dark:border-gray-700">
                 <tr>
                   <th className="px-3 py-2 font-medium text-gray-500 dark:text-gray-400 w-8">NO</th>
@@ -794,9 +794,9 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
                   <th className="px-3 py-2 font-medium text-gray-500 dark:text-gray-400">Ad Soyad</th>
                   <th className="px-3 py-2 font-medium text-gray-500 dark:text-gray-400">Geçerlilik Tarihi</th>
                   <th className="px-3 py-2 font-medium text-gray-500 dark:text-gray-400">Durum</th>
-                  <th className="px-3 py-2 font-medium text-gray-500 dark:text-gray-400 text-right">Saat</th>
-                  <th className="px-3 py-2 font-medium text-gray-500 dark:text-gray-400 text-right">Kaydeden</th>
-                  <th className="px-3 py-2 font-medium text-gray-500 dark:text-gray-400 text-right">İŞLEM</th>
+                  <th className="px-3 py-2 font-medium text-gray-500 dark:text-gray-400">Saat</th>
+                  <th className="px-3 py-2 font-medium text-gray-500 dark:text-gray-400">Kaydeden</th>
+                  <th className="px-3 py-2 font-medium text-gray-500 dark:text-gray-400">İŞLEM</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -817,13 +817,13 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
                           {status.text}
                         </span>
                       </td>
-                      <td className="px-3 py-1.5 text-gray-500 dark:text-gray-400 text-right">{entry.timestamp}</td>
-                      <td className="px-3 py-1.5 text-gray-500 dark:text-gray-400 text-right">
+                      <td className="px-3 py-1.5 text-gray-500 dark:text-gray-400">{entry.timestamp}</td>
+                      <td className="px-3 py-1.5 text-gray-500 dark:text-gray-400">
                         <span className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded text-[10px]">
                           {entry.recordedBy}
                         </span>
                       </td>
-                      <td className="px-3 py-1.5 text-right">
+                      <td className="px-3 py-1.5">
                         <button
                           onClick={() => onDelete(entry)}
                           className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"
