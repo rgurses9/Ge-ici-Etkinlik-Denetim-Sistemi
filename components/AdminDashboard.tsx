@@ -608,9 +608,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 const realCount = event.currentCount;
 
                 return (
-                  <div key={event.id} className={`bg-white dark:bg-[#0f172a] border ${isLate ? 'border-red-500/20' : 'border-gray-200 dark:border-gray-800/80'} p-5 rounded-xl shadow-sm hover:shadow-md transition-all`}>
+                  <div key={event.id} className={`bg-white dark:bg-[#0f172a] border ${isLate ? 'border-red-500/20' : 'border-gray-200 dark:border-gray-800/80'} p-4 rounded-xl shadow-sm hover:shadow-md transition-all`}>
                     <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-                      <div className="flex-1 space-y-3.5">
+                      <div className="flex-1 space-y-2">
                         {isLate && realCount === 0 && (
                           <div className="flex items-center gap-1.5 text-red-600 dark:text-red-400 text-[10px] font-bold animate-pulse">
                             <AlertTriangle size={12} />
@@ -712,9 +712,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       const isLate = new Date(event.startDate) < new Date();
 
                       return (
-                        <div key={event.id} className="bg-white dark:bg-[#0f172a] border border-gray-200 dark:border-gray-800/80 p-5 rounded-xl shadow-sm hover:shadow-md transition-all">
+                        <div key={event.id} className="bg-white dark:bg-[#0f172a] border border-gray-200 dark:border-gray-800/80 p-4 rounded-xl shadow-sm hover:shadow-md transition-all">
                           <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-                            <div className="flex-1 space-y-3.5">
+                            <div className="flex-1 space-y-2">
                               <div className="flex items-center gap-2">
                                 <h4 className="font-bold text-gray-900 dark:text-white text-xs sm:text-sm">
                                   {event.name}
