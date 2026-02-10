@@ -3,13 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Event, User, UserRole, ScanEntry, CompanyTarget } from '../types';
 import { Plus, Users, Calendar, Play, LogOut, Eye, Trash2, Edit, UserCog, Key, ShieldCheck, User as UserIcon, Activity, Archive, Download, RefreshCw, Clock, Wifi, X, CheckCircle, Sun, Moon, Folder, ChevronDown, ChevronUp, AlertTriangle, AlertCircle, Upload } from 'lucide-react';
 
-const formatEventName = (name: string) => {
-  return name
-    .toLocaleLowerCase('tr-TR')
-    .split(' ')
-    .map((word) => word.charAt(0).toLocaleUpperCase('tr-TR') + word.slice(1))
-    .join(' ');
-};
+
 
 interface AdminDashboardProps {
   currentUser: User;
@@ -689,7 +683,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </div>
                         )}
                         <h4 className={`font-bold ${textColor} text-xs`}>
-                          {formatEventName(event.name)}
+                          {event.name}
                         </h4>
 
                         <div className="flex flex-wrap items-center gap-2">
@@ -819,7 +813,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <div className="flex-1 space-y-2">
                               <div className="flex items-center gap-2">
                                 <h4 className="font-bold text-gray-900 dark:text-white text-xs">
-                                  {formatEventName(event.name)}
+                                  {event.name}
                                 </h4>
                                 <span className="px-2 py-0.5 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 text-[10px] font-bold rounded-full border border-green-200 dark:border-green-800">
                                   DEVAM EDİYOR
@@ -992,7 +986,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <div key={event.id} className={`rounded-lg p-2.5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 transition ${cardClass}`}>
                                   <div className="w-full sm:w-auto">
                                     <h4 className="font-bold text-gray-800 dark:text-white text-xs flex flex-wrap gap-1 items-center">
-                                      {formatEventName(event.name)}
+                                      {event.name}
                                       {isRecent && hasUnknownPersonnel && (
                                         <span className="flex items-center gap-1 text-[10px] bg-[#3f1616] text-red-500 px-2 py-0.5 rounded-full border border-red-900/50 whitespace-nowrap ml-2">
                                           <AlertTriangle size={10} />
@@ -1586,7 +1580,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
               <div className="flex justify-between items-center p-6 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50 rounded-t-2xl">
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">{formatEventName(viewingEvent.name)}</h2>
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">{viewingEvent.name}</h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400">Katılımcı Listesi</p>
                 </div>
                 <button
