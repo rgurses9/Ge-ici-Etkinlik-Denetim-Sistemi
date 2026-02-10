@@ -98,7 +98,7 @@ const App: React.FC = () => {
         setUsers(INITIAL_USERS);
       } else {
         setUsers(fetchedUsers);
-        console.log(`✅ Users refreshed: ${fetchedUsers.length} `);
+        console.log(`✅ Users refreshed: ${fetchedUsers.length}`);
       }
     } catch (error: any) {
       console.error("❌ Error refreshing users:", error);
@@ -109,37 +109,26 @@ const App: React.FC = () => {
   };
 
   // 1. Users Subscription & Initial Seeding
-  // 1. Users Loading (Optimized: Get Once + Cache)
+  // 1. Users Loading (Max Optimization: Cache-First)
   useEffect(() => {
     const loadUsers = async () => {
       const cachedUsers = localStorage.getItem('geds_users_cache');
       if (cachedUsers) {
         setUsers(JSON.parse(cachedUsers));
         setIsUsersLoading(false);
-        console.log("✅ Users loaded from cache (No Read)");
-        return;
       }
 
-      // Fetch Only if No Cache
       try {
         const q = query(collection(db, 'users'));
         const snapshot = await getDocs(q);
         const fetchedUsers: User[] = snapshot.docs.map(doc => doc.data() as User);
 
-        if (fetchedUsers.length === 0) {
-          // Seed...
-          console.log("Seeding initial users...");
-          for (const user of INITIAL_USERS) {
-            await setDoc(doc(db, 'users', user.id), user);
-          }
-          setUsers(INITIAL_USERS);
-          localStorage.setItem('geds_users_cache', JSON.stringify(INITIAL_USERS));
-        } else {
+        if (fetchedUsers.length > 0) {
           setUsers(fetchedUsers);
           localStorage.setItem('geds_users_cache', JSON.stringify(fetchedUsers));
         }
       } catch (e) {
-        console.error("Error loading users", e);
+        console.warn("Users fetch from server failed, relying on cache.", e);
       } finally {
         setIsUsersLoading(false);
       }
@@ -183,34 +172,30 @@ const App: React.FC = () => {
   }, [session.isAuthenticated]);
 
   // Conflict Check (On-Demand)
-  // Conflict Check (On-Demand)
   const checkCitizenshipConflict = async (tc: string, ignoreEventId: string): Promise<string | null> => {
     try {
       // 1. Check Local Cache (Fastest & Free)
       // Iterate through all loaded events in state
-      let foundScans: ScanEntry[] = [];
-      Object.keys(scannedEntries).forEach(eventId => {
-        const entry = scannedEntries[eventId]?.find(s => s.citizen.tc === tc);
-        if (entry) foundScans.push(entry);
+      // --- OPTIMIZATION: Check local state first (Free & Instant) ---
+      let otherScans: ScanEntry[] = [];
+
+      Object.keys(scannedEntries).forEach(eid => {
+        if (eid === ignoreEventId) return;
+        const entry = scannedEntries[eid]?.find(s => s.citizen.tc === tc);
+        if (entry) otherScans.push(entry);
       });
 
-      // If local cache found nothing, we might still need to check DB if we don't have all events loaded
-      // But typically for "Offline Mode" efficiency, we rely on what we have.
-      // However, to be safe and "Global", we do a single specific query if online.
-
-      let otherScans = [...foundScans];
-
-      if (navigator.onLine && foundScans.length === 0) {
-        const q = query(collection(db, 'scanned_entries'), where('citizen.tc', '==', tc));
+      // Only if we found nothing locally AND we are online, we check the global database
+      if (navigator.onLine && otherScans.length === 0) {
+        const q = query(
+          collection(db, 'scanned_entries'),
+          where('citizen.tc', '==', tc)
+        );
         const snapshot = await getDocs(q);
         if (!snapshot.empty) {
-          const dbScans = snapshot.docs.map(d => d.data() as ScanEntry);
-          // Merge avoiding duplicates
-          dbScans.forEach(s => {
-            if (!otherScans.find(Existing => Existing.id === s.id)) {
-              otherScans.push(s);
-            }
-          });
+          otherScans = snapshot.docs
+            .map(d => d.data() as ScanEntry)
+            .filter(s => s.eventId !== ignoreEventId);
         }
       }
 
@@ -223,16 +208,16 @@ const App: React.FC = () => {
       const currentEnd = new Date(currentEvent.endDate).getTime();
 
       for (const scan of otherScans) {
-        if (scan.eventId === ignoreEventId) continue;
-
         const otherEvent = events.find(e => e.id === scan.eventId);
         if (!otherEvent) continue;
 
         const otherStart = new Date(otherEvent.startDate).getTime();
         const otherEnd = new Date(otherEvent.endDate).getTime();
 
+        // Check for TIME OVERLAP
         if (currentStart < otherEnd && currentEnd > otherStart) {
-          return `⚠️ ÇAKIŞMA: Bu kişi ilk olarak "${otherEvent.name}" etkinliğinde okutulmuştur.\nBu etkinlikte görev alıyor(${scan.recordedBy || 'Bilinmiyor'} tarafından kaydedildi).Lütfen oradaki denetlemeci ile iletişime geçiniz.`;
+          const statusPrefix = otherEvent.status === 'PASSIVE' ? 'PASİF' : 'AKTİF';
+          return `⚠️ ÇAKIŞMA: Bu kişi "${otherEvent.name}" (${statusPrefix}) etkinliği ile aynı saat diliminde çakışıyor.\nZaten kaydedilmiş (${scan.recordedBy || 'Bilinmiyor'} tarafından).`;
         }
       }
 
@@ -262,14 +247,10 @@ const App: React.FC = () => {
     }
   }, [session.isAuthenticated]);
 
-  // B. Real-time Subscription for ALL Active Events
-  // This ensures that all users see all scans in real-time, whether they are auditing or on dashboard.
+  // B. Real-time Subscription for ACTIVE Event
   useEffect(() => {
     if (!session.isAuthenticated) return;
 
-    // Optimization: ONLY listen to the event the user is actively auditing
-    // Dashboard users don't need the full list of names to see the count update.
-    // They will see the count update via the 'events' collection listener.
     const targetEventId = activeEventId;
 
     if (!targetEventId) {
@@ -289,12 +270,10 @@ const App: React.FC = () => {
     );
 
     const unsubEntries = onSnapshot(q, (snapshot) => {
-      // Sort in memory to avoid "Composite Index Required" error
       const fetchedEntries: ScanEntry[] = snapshot.docs
         .map(doc => doc.data() as ScanEntry)
-        .sort((a, b) => (b.serverTimestamp || 0) - (a.serverTimestamp || 0));
+        .sort((a, b) => (Number(b.serverTimestamp) || 0) - (Number(a.serverTimestamp) || 0));
 
-      // Build update object for the single event
       setScannedEntries({ [targetEventId]: fetchedEntries });
 
       // Update Cache
@@ -306,8 +285,6 @@ const App: React.FC = () => {
       } catch (e) {
         console.warn("Cache update error", e);
       }
-
-      console.log(`✅ Scanned entries synced for event ${targetEventId} (${fetchedEntries.length} total entries)`);
     }, (error) => {
       console.error("Scanned entries listener error", error);
     });
@@ -316,9 +293,9 @@ const App: React.FC = () => {
       unsubEntries();
       (window as any)._lastScannedId = null;
     };
-  }, [session.isAuthenticated, activeEventId, events]); // Re-run if events list or active event changes
+  }, [session.isAuthenticated, activeEventId]);
 
-  // --- Handlers (Now using Firestore) ---
+  // --- Handlers ---
 
   const handleLogin = (user: User) => {
     const newSession = {
@@ -327,19 +304,6 @@ const App: React.FC = () => {
     };
     setSession(newSession);
     localStorage.setItem('geds_session', JSON.stringify(newSession));
-
-    // Check cache age and refresh if older than 24h
-    const cacheTimestamp = localStorage.getItem('geds_cache_timestamp');
-    const now = Date.now();
-    const oneDay = 24 * 60 * 60 * 1000;
-
-    if (!cacheTimestamp || (now - parseInt(cacheTimestamp)) > oneDay) {
-      console.log("Creating fresh cache timestamp...");
-      localStorage.setItem('geds_cache_timestamp', now.toString());
-      // Ideally we would trigger a refresh here if needed, but for now we just reset the timer
-      // or let the existing cache logic handle loading what's there.
-      // The user request implies "keep existing data for 24h".
-    }
   };
 
   const handleLogout = () => {
@@ -526,20 +490,21 @@ const App: React.FC = () => {
     }
   };
 
-  const handleDeleteScan = async (entryId: string) => {
+  const handleDeleteScan = async (entry: ScanEntry) => {
     if (!activeEventId) return;
 
     try {
       // 1. Delete Entry
-      await deleteDoc(doc(db, 'scanned_entries', entryId));
+      await deleteDoc(doc(db, 'scanned_entries', entry.id));
 
-      // 2. Decrement Event Count
-      const event = events.find(e => e.id === activeEventId);
-      if (event) {
-        await updateDoc(doc(db, 'events', activeEventId), {
-          currentCount: Math.max(0, event.currentCount - 1)
-        });
-      }
+      // 2. Decrement Event Count and User Count Atomically
+      const userKey = entry.recordedBy || 'Bilinmiyor';
+      await updateDoc(doc(db, 'events', activeEventId), {
+        currentCount: increment(-1),
+        [`userCounts.${userKey}`]: increment(-1)
+      });
+
+      console.log(`🗑️ Deleted scan ${entry.id} and updated counts.`);
     } catch (e) {
       console.error("Error deleting scan: ", e);
     }

@@ -2,7 +2,8 @@ import { initializeApp, getApps } from "firebase/app";
 import {
   initializeFirestore,
   persistentLocalCache,
-  persistentMultipleTabManager
+  persistentMultipleTabManager,
+  CACHE_SIZE_UNLIMITED
 } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -21,7 +22,8 @@ const app = getApps().length > 0 ? getApps()[0] : initializeApp(firebaseConfig);
 // Modern way to enable persistence
 const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager()
+    tabManager: persistentMultipleTabManager(),
+    cacheSizeBytes: CACHE_SIZE_UNLIMITED
   })
 });
 
