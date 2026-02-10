@@ -539,21 +539,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2">
               <h2 className="text-2xl font-extrabold text-gray-800 dark:text-white tracking-tight">
-                {activeTab === 'EVENTS' ? 'Aktif Denetimler' : 'Sistem Kullanıcıları'}
+                {activeTab === 'EVENTS' ? `Aktif Denetimler (${activeEvents.length})` : 'Sistem Kullanıcıları'}
               </h2>
-              {activeTab === 'EVENTS' && (
-                <div className="flex items-center gap-1.5 ml-2">
-                  <span className="px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 text-[10px] font-bold rounded border border-purple-200 dark:border-purple-800">YÖNETİCİ</span>
-                  <span className="px-1.5 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-bold rounded border border-green-200 dark:border-green-800">CANLI</span>
-                  <span className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[10px] font-bold rounded border border-blue-200 dark:border-blue-800">v1.1.0</span>
-                </div>
-              )}
             </div>
-            {activeTab === 'EVENTS' && activeEvents.length > 0 && (
-              <p className="text-sm font-bold text-gray-600 dark:text-gray-400 mt-0.5">
-                Aktif Etkinlikler ({activeEvents.length})
-              </p>
-            )}
           </div>
           <div className="flex flex-wrap gap-2 w-full sm:w-auto">
             {isAdmin && (

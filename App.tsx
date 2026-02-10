@@ -12,6 +12,7 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
+  deleteField,
   query,
   orderBy,
   writeBatch,
@@ -256,11 +257,26 @@ const App: React.FC = () => {
   };
 
   const handleUpdateEvent = async (updatedEvent: Event) => {
+    // 1. Optimistic Update (Immediate UI Refresh)
+    setEvents(prev => prev.map(e => e.id === updatedEvent.id ? { ...e, ...updatedEvent, currentCount: e.currentCount } : e));
+
     try {
       const eventRef = doc(db, 'events', updatedEvent.id);
-      // Firestore does not like 'undefined'. We clean the object.
-      const cleanEvent = JSON.parse(JSON.stringify(updatedEvent));
-      await setDoc(eventRef, cleanEvent, { merge: true });
+
+      // 2. Prepare Payload (Exclude currentCount to avoid overwriting real-time data)
+      const { currentCount, companies, ...otherFields } = updatedEvent;
+
+      // Remove undefineds from standard fields
+      const cleanPayload = JSON.parse(JSON.stringify(otherFields));
+
+      // 3. Handle 'companies': save if present, delete if empty/undefined
+      if (companies && companies.length > 0) {
+        cleanPayload.companies = companies;
+      } else {
+        cleanPayload.companies = deleteField();
+      }
+
+      await updateDoc(eventRef, cleanPayload);
     } catch (e) {
       console.error("Error updating event: ", e);
     }
