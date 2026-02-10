@@ -244,18 +244,17 @@ const App: React.FC = () => {
       return;
     }
 
-    // Load from cache first for these specific events
+    // Load all cached entries (Active + Passive) first
+    // This satisfies the requirement to keep passive data available for 24h (by persistence)
+    // and only refresh when requested.
     const cachedEntriesStr = localStorage.getItem('geds_scanned_entries_cache');
     if (cachedEntriesStr) {
       try {
         const cachedEntries = JSON.parse(cachedEntriesStr) as Record<string, ScanEntry[]>;
-        const relevantEntries: Record<string, ScanEntry[]> = {};
-        targetEventIds.forEach(id => {
-          if (cachedEntries[id]) relevantEntries[id] = cachedEntries[id];
-        });
-        if (Object.keys(relevantEntries).length > 0) {
-          setScannedEntries(prev => ({ ...prev, ...relevantEntries }));
-          console.log('✅ Scanned entries loaded from cache for active/continuing events');
+        if (Object.keys(cachedEntries).length > 0) {
+          // Merge with current state (safe because this runs early or usually state is empty)
+          setScannedEntries(prev => ({ ...prev, ...cachedEntries }));
+          console.log(`✅ Loaded cached entries for ${Object.keys(cachedEntries).length} events (Active & Passive)`);
         }
       } catch (e) {
         console.warn('Failed to parse scanned entries cache', e);
@@ -274,25 +273,23 @@ const App: React.FC = () => {
     const unsubEntries = onSnapshot(q, (snapshot) => {
       const fetchedEntries: ScanEntry[] = snapshot.docs.map(doc => doc.data() as ScanEntry);
 
-      const grouped: Record<string, ScanEntry[]> = {};
+      // Build update object ensuring all target events have an entry (even if empty)
+      const updateObj: Record<string, ScanEntry[]> = {};
+      targetEventIds.forEach(eid => updateObj[eid] = []);
       fetchedEntries.forEach(entry => {
-        if (!grouped[entry.eventId]) {
-          grouped[entry.eventId] = [];
-        }
-        grouped[entry.eventId].push(entry);
+        updateObj[entry.eventId].push(entry);
       });
 
-      setScannedEntries(grouped);
+      // MERGE with existing state to preserve passive data
+      setScannedEntries(prev => ({ ...prev, ...updateObj }));
 
       // Update Cache (Merge with existing cache to avoid losing data for other events)
       const currentCacheStr = localStorage.getItem('geds_scanned_entries_cache');
       let newCache = currentCacheStr ? JSON.parse(currentCacheStr) : {};
-      // Update only the events we just fetched
-      targetEventIds.forEach(id => {
-        newCache[id] = grouped[id] || [];
-      });
+      // Update with new active data
+      Object.assign(newCache, updateObj);
       localStorage.setItem('geds_scanned_entries_cache', JSON.stringify(newCache));
-      console.log(`✅ Scanned entries synced and cached for ${targetEventIds.length} events`);
+      console.log(`✅ Scanned entries synced and cached for ${targetEventIds.length} active events`);
     });
 
     return () => unsubEntries();
@@ -511,6 +508,17 @@ const App: React.FC = () => {
           if (!next[entry.eventId]) next[entry.eventId] = [];
           next[entry.eventId].push(entry);
         });
+        // Update Cache with new passive data
+        const currentCacheStr = localStorage.getItem('geds_scanned_entries_cache');
+        let cacheToUpdate = currentCacheStr ? JSON.parse(currentCacheStr) : {};
+        // Clear requested keys in cache first (or just overwrite)
+        eventIds.forEach(eid => cacheToUpdate[eid] = []);
+        newEntries.forEach(entry => {
+          cacheToUpdate[entry.eventId].push(entry);
+        });
+        localStorage.setItem('geds_scanned_entries_cache', JSON.stringify(cacheToUpdate));
+        console.log(`✅ Cached updated passive data for ${eventIds.length} events`);
+
         return next;
       });
     } catch (e) {
