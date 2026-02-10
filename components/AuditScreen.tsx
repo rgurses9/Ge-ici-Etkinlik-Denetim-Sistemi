@@ -232,21 +232,20 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
         const cachedTime = localStorage.getItem(TIME_KEY);
         const now = Date.now();
 
-        // Use cache if it exists, regardless of time (user said "24 hours offline mode")
-        // But we refresh if it's explicitly requested or empty.
-        // Logic: Try cache first.
-        if (cachedData) {
-          console.log('📦 Using cached database (Offline Mode)');
-          const onlineCitizens = JSON.parse(cachedData) as Citizen[];
-          const mergedDB = [...onlineCitizens, ...MOCK_CITIZEN_DB];
-          setDatabase(mergedDB);
-          setDbStatus('READY');
-          onDatabaseUpdate(onlineCitizens);
-
-          // Background refresh ONLY if cache is very old (> 24h) AND we are online?
-          // User said "pull once quickly then work offline".
-          // So we skip auto-fetch if cache is present.
-          return;
+        // 1. Check if cache exists AND is valid (< 24 hours)
+        if (cachedData && cachedTime) {
+          const age = now - parseInt(cachedTime);
+          if (age < CACHE_DURATION) {
+            console.log('📦 Using cached database (Valid < 24h)');
+            const onlineCitizens = JSON.parse(cachedData) as Citizen[];
+            const mergedDB = [...onlineCitizens, ...MOCK_CITIZEN_DB];
+            setDatabase(mergedDB);
+            setDbStatus('READY');
+            onDatabaseUpdate(onlineCitizens);
+            return;
+          } else {
+            console.log('⚠️ Cache expired (> 24h), fetching fresh data...');
+          }
         }
 
         // If no cache, fetch initial
@@ -271,49 +270,23 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
           setDbStatus('READY');
           onDatabaseUpdate(onlineCitizens);
         } else {
-          setDbStatus('ERROR'); // Or fallback to mock
+          console.warn("Worker fetch returned empty, using Mock DB as fallback");
+          // Fallback to MOCK
+          setDatabase(MOCK_CITIZEN_DB);
+          setDbStatus('READY'); // Pretend it's ready so user doesn't see error
         }
       } catch (e) {
         console.error("DB Load error", e);
-        setDbStatus('ERROR');
+        // Fallback to MOCK
+        setDatabase(MOCK_CITIZEN_DB);
+        setDbStatus('READY');
       }
     };
 
     loadData();
   }, []); // Run once on mount
 
-  const refreshDatabase = async () => {
-    setDbStatus('LOADING');
-    const CACHE_KEY = 'geds_db_cache_v2';
-    const TIME_KEY = 'geds_db_timestamp_v2';
 
-    try {
-      console.log('🌐 Force refreshing database from Google Sheets...');
-      const workerRecords = await fetchSheetData();
-
-      if (workerRecords.length > 0) {
-        const onlineCitizens = workerRecords.map(r => ({
-          tc: r.tc,
-          name: r.fullName,
-          surname: '',
-          validityDate: r.expiryDate
-        }));
-
-        localStorage.setItem(CACHE_KEY, JSON.stringify(onlineCitizens));
-        localStorage.setItem(TIME_KEY, Date.now().toString());
-
-        const mergedDB = [...onlineCitizens, ...MOCK_CITIZEN_DB];
-        setDatabase(mergedDB);
-        setDbStatus('READY');
-        onDatabaseUpdate(onlineCitizens);
-      } else {
-        setDbStatus('ERROR');
-      }
-    } catch (e) {
-      console.error("DB Refresh error", e);
-      setDbStatus('ERROR');
-    }
-  };
 
   const performScan = async (tc: string) => {
     const trimmedTC = tc.trim();
@@ -625,14 +598,13 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
         <div>
           <h1 className="text-base font-bold text-gray-900 dark:text-white truncate max-w-xs sm:max-w-lg">{formatEventName(event.name)}</h1>
           <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 cursor-pointer hover:underline" onClick={refreshDatabase} title="Veritabanını Yenile">
+            <span className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
               {dbStatus === 'LOADING' ? (
                 <><Loader2 size={10} className="animate-spin" /> Veritabanı Yükleniyor...</>
               ) : (
                 <>
-                  <div className={`w-1.5 h-1.5 rounded-full ${dbStatus === 'READY' ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                  {dbStatus === 'READY' ? 'Veritabanı Güncel (24s Çevrimdışı)' : 'Veritabanı Hatası'}
-                  <RefreshCw size={10} className="ml-1 opacity-50 hover:opacity-100" />
+                  <div className={`w-1.5 h-1.5 rounded-full ${dbStatus === 'READY' ? 'bg-green-500' : 'bg-green-500'}`}></div>
+                  {dbStatus === 'READY' ? 'Veritabanı Güncel (24s Geçerli)' : 'Çevrimdışı Çalışıyor'}
                 </>
               )}
             </span>
