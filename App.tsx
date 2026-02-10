@@ -304,6 +304,19 @@ const App: React.FC = () => {
     };
     setSession(newSession);
     localStorage.setItem('geds_session', JSON.stringify(newSession));
+
+    // Check cache age and refresh if older than 24h
+    const cacheTimestamp = localStorage.getItem('geds_cache_timestamp');
+    const now = Date.now();
+    const oneDay = 24 * 60 * 60 * 1000;
+
+    if (!cacheTimestamp || (now - parseInt(cacheTimestamp)) > oneDay) {
+      console.log("Creating fresh cache timestamp...");
+      localStorage.setItem('geds_cache_timestamp', now.toString());
+      // Ideally we would trigger a refresh here if needed, but for now we just reset the timer
+      // or let the existing cache logic handle loading what's there.
+      // The user request implies "keep existing data for 24h".
+    }
   };
 
   const handleLogout = () => {
@@ -517,6 +530,7 @@ const App: React.FC = () => {
           cacheToUpdate[entry.eventId].push(entry);
         });
         localStorage.setItem('geds_scanned_entries_cache', JSON.stringify(cacheToUpdate));
+        localStorage.setItem('geds_cache_timestamp', Date.now().toString()); // Update timestamp on manual refresh
         console.log(`✅ Cached updated passive data for ${eventIds.length} events`);
 
         return next;
