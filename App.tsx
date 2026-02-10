@@ -125,8 +125,21 @@ const App: React.FC = () => {
   }, []);
 
   // 2. Events Subscription & Initial Seeding
+  // 2. Events Subscription & Initial Seeding with Caching
   useEffect(() => {
     if (!session.isAuthenticated) return;
+
+    // Load from cache first
+    const cachedEvents = localStorage.getItem('geds_events_cache');
+    if (cachedEvents) {
+      try {
+        const parsed = JSON.parse(cachedEvents);
+        setEvents(parsed);
+        console.log(`✅ Events loaded from cache: ${parsed.length}`);
+      } catch (e) {
+        console.warn('Failed to parse events cache', e);
+      }
+    }
 
     const unsubEvents = onSnapshot(collection(db, 'events'), (snapshot) => {
       const fetchedEvents: Event[] = snapshot.docs.map(doc => doc.data() as Event);
@@ -139,6 +152,9 @@ const App: React.FC = () => {
         });
       } else {
         setEvents(fetchedEvents);
+        // Update cache
+        localStorage.setItem('geds_events_cache', JSON.stringify(fetchedEvents));
+        console.log(`✅ Events synced and cached: ${fetchedEvents.length}`);
       }
     });
 
@@ -183,6 +199,7 @@ const App: React.FC = () => {
   };
 
   // 3. Optimized Scanned Entries Subscription
+  // 3. Optimized Scanned Entries Subscription with Caching
   useEffect(() => {
     if (!session.isAuthenticated) return;
 
@@ -203,6 +220,24 @@ const App: React.FC = () => {
     if (targetEventIds.length === 0) {
       setScannedEntries({});
       return;
+    }
+
+    // Load from cache first for these specific events
+    const cachedEntriesStr = localStorage.getItem('geds_scanned_entries_cache');
+    if (cachedEntriesStr) {
+      try {
+        const cachedEntries = JSON.parse(cachedEntriesStr) as Record<string, ScanEntry[]>;
+        const relevantEntries: Record<string, ScanEntry[]> = {};
+        targetEventIds.forEach(id => {
+          if (cachedEntries[id]) relevantEntries[id] = cachedEntries[id];
+        });
+        if (Object.keys(relevantEntries).length > 0) {
+          setScannedEntries(prev => ({ ...prev, ...relevantEntries }));
+          console.log('✅ Scanned entries loaded from cache for active/continuing events');
+        }
+      } catch (e) {
+        console.warn('Failed to parse scanned entries cache', e);
+      }
     }
 
     // Firestore 'in' query allows max 10 values
@@ -226,6 +261,16 @@ const App: React.FC = () => {
       });
 
       setScannedEntries(grouped);
+
+      // Update Cache (Merge with existing cache to avoid losing data for other events)
+      const currentCacheStr = localStorage.getItem('geds_scanned_entries_cache');
+      let newCache = currentCacheStr ? JSON.parse(currentCacheStr) : {};
+      // Update only the events we just fetched
+      targetEventIds.forEach(id => {
+        newCache[id] = grouped[id] || [];
+      });
+      localStorage.setItem('geds_scanned_entries_cache', JSON.stringify(newCache));
+      console.log(`✅ Scanned entries synced and cached for ${targetEventIds.length} events`);
     });
 
     return () => unsubEntries();
