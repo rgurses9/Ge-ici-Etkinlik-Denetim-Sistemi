@@ -652,23 +652,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                         {/* User Scan Counts */}
                         {(() => {
-                          const entries = scannedEntries[event.id] || [];
-                          if (entries.length === 0) return null;
-                          const userStats = entries.reduce((acc, entry) => {
-                            const user = entry.recordedBy || 'Bilinmiyor';
-                            acc[user] = (acc[user] || 0) + 1;
-                            return acc;
-                          }, {} as Record<string, number>);
+                          const userStats = event.userCounts || {};
+
+                          // Fallback to calculated stats ONLY if userCounts is missing (for old events)
+                          const displayStats = Object.keys(userStats).length > 0
+                            ? userStats
+                            : (scannedEntries[event.id] || []).reduce((acc, entry) => {
+                              const user = entry.recordedBy || 'Bilinmiyor';
+                              acc[user] = (acc[user] || 0) + 1;
+                              return acc;
+                            }, {} as Record<string, number>);
+
+                          if (Object.keys(displayStats).length === 0) return null;
 
                           return (
                             <div className="flex flex-wrap gap-1.5 mt-1">
-                              {Object.entries(userStats).map(([username, count]) => (
-                                <div key={username} className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/20 text-[9px] font-bold text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-800/50">
-                                  <UserIcon size={10} />
-                                  <span>{username}:</span>
-                                  <span className="bg-blue-100 dark:bg-blue-800 px-1 rounded-sm">{count}</span>
-                                </div>
-                              ))}
+                              {Object.entries(displayStats)
+                                .sort((a, b) => b[1] - a[1]) // En çok okutandan aza sırala
+                                .map(([username, count]) => (
+                                  <div key={username} className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/20 text-[9px] font-bold text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-800/50">
+                                    <UserIcon size={10} />
+                                    <span>{username}:</span>
+                                    <span className="bg-blue-100 dark:bg-blue-800 px-1 rounded-sm">{count}</span>
+                                  </div>
+                                ))}
                             </div>
                           );
                         })()}

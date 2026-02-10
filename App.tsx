@@ -472,9 +472,11 @@ const App: React.FC = () => {
       // 2. Add Entry
       await setDoc(doc(db, 'scanned_entries', uniqueId), entryWithUniqueId);
 
-      // 3. Increment Event Count Atomically (IMPORTANT for read/write balance)
+      // 3. Increment Event Count and User Count Atomically (IMPORTANT for read/write balance)
+      const userKey = entry.recordedBy || 'Bilinmiyor';
       await updateDoc(doc(db, 'events', entry.eventId), {
-        currentCount: increment(1)
+        currentCount: increment(1),
+        [`userCounts.${userKey}`]: increment(1)
       });
     } catch (e) {
       console.error("Error adding scan: ", e);
@@ -494,13 +496,28 @@ const App: React.FC = () => {
         batch.set(ref, entry);
       });
 
-      // Update event count
+      // Update event count and user counts
       const event = events.find(e => e.id === eventId);
       if (event) {
         const eventRef = doc(db, 'events', eventId);
-        batch.update(eventRef, {
-          currentCount: event.currentCount + newEntries.length
+
+        // Count how many scans each user has in this batch
+        const batchUserStats: Record<string, number> = {};
+        newEntries.forEach(e => {
+          const user = e.recordedBy || 'Bilinmiyor';
+          batchUserStats[user] = (batchUserStats[user] || 0) + 1;
         });
+
+        const updates: any = {
+          currentCount: increment(newEntries.length)
+        };
+
+        // Add user-specific increments
+        Object.entries(batchUserStats).forEach(([user, count]) => {
+          updates[`userCounts.${user}`] = increment(count);
+        });
+
+        batch.update(eventRef, updates);
       }
 
       await batch.commit();
