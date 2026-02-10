@@ -221,7 +221,8 @@ interface AuditScreenProps {
   allScannedEntries: Record<string, ScanEntry[]>; // For cross checking
   onCheckConflict: (tc: string, eventId: string) => Promise<string | null>;
   onDatabaseUpdate: (freshDb: Citizen[]) => void;
-  isDarkMode: boolean; // Add theme support
+  isDarkMode: boolean;
+  activeCompanyName?: string | null;
 }
 
 const AuditScreen: React.FC<AuditScreenProps> = ({
@@ -237,7 +238,8 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   allScannedEntries,
   onCheckConflict,
   onDatabaseUpdate,
-  isDarkMode
+  isDarkMode,
+  activeCompanyName
 }) => {
   const [tcInput, setTcInput] = useState('');
   const [lastScanResult, setLastScanResult] = useState<{ status: 'SUCCESS' | 'ERROR' | 'WARNING' | 'IDLE', message: string, citizen?: Citizen }>({ status: 'IDLE', message: '' });
@@ -600,8 +602,12 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     }
   };
 
-  const progressPercentage = Math.min(100, Math.round((scannedList.length / event.targetCount) * 100));
-  const isTargetReached = scannedList.length >= event.targetCount;
+  // Determine effective target (company-specific or total)
+  const effectiveTarget = activeCompanyName
+    ? (event.companies?.find(c => c.name === activeCompanyName)?.count || event.targetCount)
+    : event.targetCount;
+  const progressPercentage = Math.min(100, Math.round((scannedList.length / effectiveTarget) * 100));
+  const isTargetReached = scannedList.length >= effectiveTarget;
 
   if (showSummary) {
     return (
@@ -639,7 +645,14 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       {/* Top Bar */}
       <div className="bg-white dark:bg-gray-800 px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center sticky top-0 z-10">
         <div>
-          <h1 className="text-base font-bold text-gray-900 dark:text-white truncate max-w-xs sm:max-w-lg">{formatEventName(event.name)}</h1>
+          <h1 className="text-base font-bold text-gray-900 dark:text-white truncate max-w-xs sm:max-w-lg">
+            {formatEventName(event.name)}
+            {activeCompanyName && (
+              <span className="ml-2 text-xs font-medium text-blue-500 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-full">
+                {activeCompanyName}
+              </span>
+            )}
+          </h1>
           <div className="flex items-center gap-2 mt-0.5">
             <span className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
               {dbStatus === 'LOADING' ? (
@@ -668,7 +681,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       <div className="bg-gray-100 dark:bg-gray-800 px-4 py-1.5 border-b border-gray-200 dark:border-gray-700">
         <div className="flex justify-between text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mb-1">
           <span>İlerleme</span>
-          <span>{scannedList.length} / {event.targetCount} (%{progressPercentage})</span>
+          <span>{scannedList.length} / {effectiveTarget} (%{progressPercentage})</span>
         </div>
         <div className="w-full bg-gray-300 dark:bg-gray-600 rounded-full h-2 overflow-hidden">
           <div

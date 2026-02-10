@@ -17,7 +17,7 @@ interface AdminDashboardProps {
   users: User[];
   scannedEntries: Record<string, ScanEntry[]>;
   onLogout: () => void;
-  onStartAudit: (eventId: string) => void;
+  onStartAudit: (eventId: string, companyName?: string) => void;
   onAddEvent: (event: Event) => void;
   onDeleteEvent: (id: string) => void;
   onReactivateEvent: (id: string) => void;
@@ -51,6 +51,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [showEventModal, setShowEventModal] = useState(false);
   const [viewingEvent, setViewingEvent] = useState<Event | null>(null);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
+
+  // Company Selection State
+  const [companySelectEvent, setCompanySelectEvent] = useState<Event | null>(null);
 
   // Accordion state for passive events
   const [expandedMonths, setExpandedMonths] = useState<string[]>([]);
@@ -405,7 +408,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleStartAuditClick = (eventId: string) => {
-    onStartAudit(eventId);
+    const event = events.find(e => e.id === eventId);
+    if (event?.companies && event.companies.length > 1) {
+      // Show company selection modal
+      setCompanySelectEvent(event);
+    } else if (event?.companies && event.companies.length === 1) {
+      // Single company, start directly with company name
+      onStartAudit(eventId, event.companies[0].name);
+    } else {
+      // No companies, start directly
+      onStartAudit(eventId);
+    }
   };
 
   const checkWorkStatus = (dateInput: any) => {
@@ -1129,6 +1142,60 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           )
         )}
       </main >
+
+      {/* Modal: Company Selection */}
+      {companySelectEvent && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl relative">
+            <button
+              onClick={() => setCompanySelectEvent(null)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            >
+              <X size={24} />
+            </button>
+
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
+              Şirket Seçimi
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              Hangi şirketin denetlemesini yapacaksınız?
+            </p>
+
+            <div className="space-y-2">
+              {companySelectEvent.companies?.map((company, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    onStartAudit(companySelectEvent.id, company.name);
+                    setCompanySelectEvent(null);
+                  }}
+                  className="w-full flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 hover:bg-blue-50 dark:hover:bg-blue-900/30 border border-gray-200 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500 rounded-xl transition-all group"
+                >
+                  <div className="text-left">
+                    <div className="font-semibold text-sm text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                      {company.name}
+                    </div>
+                    <div className="text-[10px] text-gray-500 dark:text-gray-400">
+                      Hedef: {company.count} kişi
+                    </div>
+                  </div>
+                  <Play size={16} className="text-blue-500 group-hover:text-blue-600" />
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => {
+                onStartAudit(companySelectEvent.id);
+                setCompanySelectEvent(null);
+              }}
+              className="w-full mt-3 text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 py-2 transition"
+            >
+              Şirket seçmeden tümünü denetle
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Add Event */}
       {
