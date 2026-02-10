@@ -609,7 +609,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                 return (
                   <div key={event.id} className={`bg-white dark:bg-[#0f172a] border ${isLate ? 'border-red-500/20' : 'border-gray-200 dark:border-gray-800/80'} p-5 rounded-xl shadow-sm hover:shadow-md transition-all`}>
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
                       <div className="flex-1 space-y-3.5">
                         {isLate && realCount === 0 && (
                           <div className="flex items-center gap-1.5 text-red-600 dark:text-red-400 text-[10px] font-bold animate-pulse">
@@ -617,7 +617,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <span>VERİ GİRİŞİ YAPILMAMIŞ</span>
                           </div>
                         )}
-                        <h4 className={`font-bold ${textColor} text-sm sm:text-base`}>
+                        <h4 className={`font-bold ${textColor} text-xs sm:text-sm`}>
                           {event.name}
                         </h4>
 
@@ -649,36 +649,36 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0 self-center">
+                      <div className="flex items-center gap-2 shrink-0 sm:self-start mt-0.5">
                         <button
                           onClick={() => handleStartAuditClick(event.id)}
-                          className="p-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-all active:scale-95 flex items-center justify-center group/play"
+                          className="p-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-all active:scale-95 flex items-center justify-center group/play"
                           title="Denetimi Başlat"
                         >
-                          <Play size={20} className="fill-current" />
+                          <Play size={16} className="fill-current" />
                         </button>
                         <button
                           onClick={() => setViewingEvent(event)}
-                          className="p-2.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-all"
+                          className="p-1.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-all"
                           title="Listeyi Gör"
                         >
-                          <Eye size={20} />
+                          <Eye size={16} />
                         </button>
                         {isAdmin && (
                           <>
                             <button
                               onClick={() => handleStartEditEvent(event)}
-                              className="p-2.5 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-lg transition-all"
+                              className="p-1.5 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-lg transition-all"
                               title="Düzenle"
                             >
-                              <Edit size={20} />
+                              <Edit size={16} />
                             </button>
                             <button
                               onClick={() => onDeleteEvent(event.id)}
-                              className="p-2.5 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-lg transition-all"
+                              className="p-1.5 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-lg transition-all"
                               title="Sil"
                             >
-                              <Trash2 size={20} />
+                              <Trash2 size={16} />
                             </button>
                           </>
                         )}
@@ -713,10 +713,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                       return (
                         <div key={event.id} className="bg-white dark:bg-[#0f172a] border border-gray-200 dark:border-gray-800/80 p-5 rounded-xl shadow-sm hover:shadow-md transition-all">
-                          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                          <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
                             <div className="flex-1 space-y-3.5">
                               <div className="flex items-center gap-2">
-                                <h4 className="font-bold text-gray-900 dark:text-white text-sm sm:text-base">
+                                <h4 className="font-bold text-gray-900 dark:text-white text-xs sm:text-sm">
                                   {event.name}
                                 </h4>
                                 <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 text-[10px] font-bold rounded-full border border-blue-200 dark:border-blue-800">
@@ -752,36 +752,36 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-2 shrink-0 self-center">
+                            <div className="flex items-center gap-2 shrink-0 sm:self-start mt-0.5">
                               <button
                                 onClick={() => handleStartAuditClick(event.id)}
-                                className="p-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-all active:scale-95 flex items-center justify-center"
+                                className="p-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-all active:scale-95 flex items-center justify-center"
                                 title="Denetime Devam Et"
                               >
-                                <Play size={20} className="fill-current" />
+                                <Play size={16} className="fill-current" />
                               </button>
                               <button
                                 onClick={() => setViewingEvent(event)}
-                                className="p-2.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-all"
+                                className="p-1.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-all"
                                 title="Listeyi Gör"
                               >
-                                <Eye size={20} />
+                                <Eye size={16} />
                               </button>
                               {isAdmin && (
                                 <>
                                   <button
                                     onClick={() => handleStartEditEvent(event)}
-                                    className="p-2.5 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-lg transition-all"
+                                    className="p-1.5 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-lg transition-all"
                                     title="Düzenle"
                                   >
-                                    <Edit size={20} />
+                                    <Edit size={16} />
                                   </button>
                                   <button
                                     onClick={() => onDeleteEvent(event.id)}
-                                    className="p-2.5 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-lg transition-all"
+                                    className="p-1.5 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-lg transition-all"
                                     title="Sil"
                                   >
-                                    <Trash2 size={20} />
+                                    <Trash2 size={16} />
                                   </button>
                                 </>
                               )}
