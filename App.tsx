@@ -223,43 +223,78 @@ const App: React.FC = () => {
     }
   }, [session.isAuthenticated]);
 
-  // B. Scanned Entries (Optimized: Loader instead of Listener)
+  // B. Scanned Entries (Load current event + overlapping events for conflict detection)
   useEffect(() => {
     if (!session.isAuthenticated || !activeEventId) {
-      setScannedEntries({});
+      if (!activeEventId) setScannedEntries({});
       return;
     }
 
     const loadScannedEntries = async () => {
       try {
-        // 1. Try Cache First
+        // 1. Try Cache First for instant UI
         const cachedEntriesStr = localStorage.getItem('geds_scanned_entries_cache');
         if (cachedEntriesStr) {
           const cached = JSON.parse(cachedEntriesStr);
           if (cached[activeEventId]) {
-            setScannedEntries({ [activeEventId]: cached[activeEventId] });
-            console.log("📦 Loaded scans from cache first.");
+            setScannedEntries(prev => ({ ...prev, [activeEventId]: cached[activeEventId] }));
           }
         }
 
-        console.log(`📡 Loading scans for event ${activeEventId} (ONE TIME READ)`);
-        const q = query(
-          collection(db, 'scanned_entries'),
-          where('eventId', '==', activeEventId)
-        );
+        // 2. Find which events overlap with the current event (for conflict detection)
+        const currentEvent = events.find(e => e.id === activeEventId);
+        if (!currentEvent) return;
 
-        const snapshot = await getDocs(q);
-        const fetchedEntries: ScanEntry[] = snapshot.docs
-          .map(doc => doc.data() as ScanEntry)
-          .sort((a, b) => (Number(b.serverTimestamp) || 0) - (Number(a.serverTimestamp) || 0));
+        const currentStart = new Date(currentEvent.startDate).getTime();
+        const currentEnd = new Date(currentEvent.endDate).getTime();
 
-        setScannedEntries({ [activeEventId]: fetchedEntries });
+        const overlappingEventIds = events
+          .filter(e => {
+            if (e.id === activeEventId) return true; // Always load current event
+            const eStart = new Date(e.startDate).getTime();
+            const eEnd = new Date(e.endDate).getTime();
+            return currentStart < eEnd && currentEnd > eStart; // Time overlap check
+          })
+          .map(e => e.id);
+
+        console.log(`📡 Loading scans for ${overlappingEventIds.length} overlapping events (ONE TIME READ)`);
+
+        // 3. Fetch scanned entries for all overlapping events
+        const allEntries: Record<string, ScanEntry[]> = {};
+
+        // Firestore 'in' query supports max 30 values, chunk if needed
+        for (let i = 0; i < overlappingEventIds.length; i += 10) {
+          const chunk = overlappingEventIds.slice(i, i + 10);
+          const q = query(
+            collection(db, 'scanned_entries'),
+            where('eventId', 'in', chunk)
+          );
+          const snapshot = await getDocs(q);
+          snapshot.docs.forEach(d => {
+            const entry = d.data() as ScanEntry;
+            if (!allEntries[entry.eventId]) allEntries[entry.eventId] = [];
+            allEntries[entry.eventId].push(entry);
+          });
+        }
+
+        // Sort the current event's entries
+        if (allEntries[activeEventId]) {
+          allEntries[activeEventId].sort((a, b) =>
+            (Number(b.serverTimestamp) || 0) - (Number(a.serverTimestamp) || 0)
+          );
+        }
+
+        setScannedEntries(allEntries);
 
         // Update Cache
-        const currentCacheStr = localStorage.getItem('geds_scanned_entries_cache');
-        let newCache = currentCacheStr ? JSON.parse(currentCacheStr) : {};
-        newCache[activeEventId] = fetchedEntries;
-        localStorage.setItem('geds_scanned_entries_cache', JSON.stringify(newCache));
+        try {
+          const currentCacheStr = localStorage.getItem('geds_scanned_entries_cache');
+          let newCache = currentCacheStr ? JSON.parse(currentCacheStr) : {};
+          Object.assign(newCache, allEntries);
+          localStorage.setItem('geds_scanned_entries_cache', JSON.stringify(newCache));
+        } catch (e) {
+          console.warn("Cache update error", e);
+        }
 
       } catch (e) {
         console.error("Error loading scan entries", e);
@@ -267,7 +302,7 @@ const App: React.FC = () => {
     };
 
     loadScannedEntries();
-  }, [session.isAuthenticated, activeEventId]);
+  }, [session.isAuthenticated, activeEventId, events]);
 
   // --- Handlers ---
 
