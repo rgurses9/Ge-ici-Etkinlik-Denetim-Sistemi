@@ -524,10 +524,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {/* Actions Bar */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-          <div className="flex flex-col gap-0.5">
-            <h2 className="text-lg font-bold text-gray-800 dark:text-white">
-              {activeTab === 'EVENTS' ? `Bekleyen Denetimler(${activeEvents.length})` : 'Sistem Kullanıcıları'}
-            </h2>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-bold text-gray-800 dark:text-white">
+                {activeTab === 'EVENTS' ? 'Aktif Denetimler' : 'Sistem Kullanıcıları'}
+              </h2>
+              {activeTab === 'EVENTS' && (
+                <div className="flex items-center gap-1.5 ml-2">
+                  <span className="px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 text-[10px] font-bold rounded border border-purple-200 dark:border-purple-800">YÖNETİCİ</span>
+                  <span className="px-1.5 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-bold rounded border border-green-200 dark:border-green-800">CANLI</span>
+                  <span className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[10px] font-bold rounded border border-blue-200 dark:border-blue-800">v1.1.0</span>
+                </div>
+              )}
+            </div>
+            {activeTab === 'EVENTS' && activeEvents.length > 0 && (
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                Aktif Etkinlikler ({activeEvents.length})
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap gap-2 w-full sm:w-auto">
             {isAdmin && (
@@ -590,80 +604,84 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="space-y-4">
               {activeEvents.map((event) => {
                 const isLate = new Date(event.startDate) < new Date();
-                const textColor = isLate ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white';
+                const textColor = isLate ? 'text-red-500 dark:text-red-400' : 'text-gray-900 dark:text-white';
+                const realCount = event.currentCount;
 
                 return (
-                  <div key={event.id} className={`bg - white dark: bg - gray - 800 rounded - xl border ${isLate ? 'border-red-500 dark:border-red-500 ring-1 ring-red-500/50' : 'border-gray-200 dark:border-gray-700'} p - 3 sm: p - 4 shadow - sm hover: shadow - md transition`}>
-                    <div className="flex flex-col gap-2">
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          {isLate && (
-                            <div className="text-[10px] font-bold text-red-600 dark:text-red-400 mb-1 flex items-center gap-1 animate-pulse">
-                              <AlertTriangle size={10} />
-                              VERİ GİRİŞİ YAPILMAMIŞ
-                            </div>
-                          )}
-                          <h4 className={`font - bold ${textColor} mb - 1 line - clamp - 2 text - xs sm: text - sm`}>{event.name}</h4>
-                          <div className="flex flex-wrap items-center gap-2 mt-0.5">
-                            <div className={`flex items - center gap - 1.5 text - [10px] ${isLate ? 'text-red-500 dark:text-red-300 bg-red-50 dark:bg-red-900/20' : 'text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700'} font - medium px - 1.5 py - 0.5 rounded`}>
-                              <Clock size={10} />
-                              {formatDate(event.startDate)}
-                            </div>
-                            <span className="text-gray-300 dark:text-gray-600">-</span>
-                            <div className={`flex items - center gap - 1.5 text - [10px] ${isLate ? 'text-red-500 dark:text-red-300 bg-red-50 dark:bg-red-900/20' : 'text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700'} font - medium px - 1.5 py - 0.5 rounded`}>
-                              <Clock size={10} />
-                              {formatDate(event.endDate)}
-                            </div>
+                  <div key={event.id} className={`bg-white dark:bg-[#0f172a] border ${isLate ? 'border-red-500/20' : 'border-gray-200 dark:border-gray-800'} p-4 rounded-xl shadow-sm hover:shadow-md transition-all`}>
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                      <div className="flex-1 space-y-3">
+                        {isLate && realCount === 0 && (
+                          <div className="flex items-center gap-1.5 text-red-600 dark:text-red-400 text-[10px] font-bold animate-pulse">
+                            <AlertTriangle size={12} />
+                            <span>VERİ GİRİŞİ YAPILMAMIŞ</span>
                           </div>
-                          <div className={`flex items - center gap - 3 mt - 2 text - [10px] ${isLate ? 'text-red-500 dark:text-red-300' : 'text-gray-500 dark:text-gray-400'} `}>
-                            <span>Hedef: {event.targetCount}</span>
-                            <span>•</span>
-                            <span className={event.currentCount >= event.targetCount ? "text-green-600 dark:text-green-400 font-medium" : ""}>
-                              {event.currentCount} / {event.targetCount}
-                            </span>
+                        )}
+                        <h4 className={`font-bold ${textColor} text-base sm:text-lg`}>
+                          {event.name}
+                        </h4>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[10px] rounded-md border border-gray-200 dark:border-gray-700 font-medium">
+                            <Clock size={10} />
+                            {formatDateTime(event.startDate)}
                           </div>
-                          {/* Progress Bar in Card */}
-                          <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1 mt-1.5 max-w-xs">
-                            <div
-                              className="bg-blue-600 dark:bg-blue-500 h-1 rounded-full transition-all duration-500"
-                              style={{ width: `${Math.min(100, (event.currentCount / event.targetCount) * 100)}% ` }}
-                            ></div>
+                          <span className="text-gray-300 dark:text-gray-600 hidden sm:inline">-</span>
+                          <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[10px] rounded-md border border-gray-200 dark:border-gray-700 font-medium">
+                            <Clock size={10} />
+                            {formatDateTime(event.endDate)}
                           </div>
                         </div>
-                        <div className="flex gap-2 shrink-0 items-start">
-                          <button
-                            onClick={() => handleStartAuditClick(event.id)}
-                            className="p-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-md shadow-sm transition"
-                            title="Denetimi Başlat"
-                          >
-                            <Play size={14} className="fill-current" />
-                          </button>
-                          <button
-                            onClick={() => setViewingEvent(event)}
-                            className="p-1.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-md transition"
-                            title="Listeyi Gör"
-                          >
-                            <Eye size={14} />
-                          </button>
-                          {/* Edit Button */}
-                          {isAdmin && (
+
+                        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 font-medium tracking-tight">
+                          <span>Hedef: {event.targetCount}</span>
+                          <span className="text-gray-300 dark:text-gray-600">•</span>
+                          <span className={realCount > 0 ? "text-blue-600 dark:text-blue-400 font-bold" : ""}>
+                            {realCount} / {event.targetCount}
+                          </span>
+                        </div>
+
+                        <div className="w-full max-w-sm bg-gray-100 dark:bg-gray-800 h-1.5 rounded-full overflow-hidden">
+                          <div
+                            className="bg-blue-600 h-full transition-all duration-500"
+                            style={{ width: `${Math.min(100, (realCount / event.targetCount) * 100)}%` }}
+                          ></div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                        <button
+                          onClick={() => handleStartAuditClick(event.id)}
+                          className="p-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-all active:scale-95 flex items-center justify-center"
+                          title="Denetimi Başlat"
+                        >
+                          <Play size={18} className="fill-current" />
+                        </button>
+                        <button
+                          onClick={() => setViewingEvent(event)}
+                          className="p-2.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-all"
+                          title="Listeyi Gör"
+                        >
+                          <Eye size={18} />
+                        </button>
+                        {isAdmin && (
+                          <>
                             <button
                               onClick={() => handleStartEditEvent(event)}
-                              className="p-1.5 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-md transition"
+                              className="p-2.5 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-lg transition-all"
                               title="Düzenle"
                             >
-                              <Edit size={14} />
+                              <Edit size={18} />
                             </button>
-                          )}
-                          {isAdmin && (
                             <button
                               onClick={() => onDeleteEvent(event.id)}
-                              className="p-1.5 text-red-400 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-md transition"
+                              className="p-2.5 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg transition-all"
+                              title="Sil"
                             >
-                              <Trash2 size={14} />
+                              <Trash2 size={18} />
                             </button>
-                          )}
-                        </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -682,128 +700,96 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {/* Continuing Audits Section */}
             {
               continuingEvents.length > 0 && (
-                <div className="mt-8">
+                <div className="mt-10 pt-8 border-t border-gray-200 dark:border-gray-800">
                   <div className="flex items-center gap-2 mb-4">
-                    <Activity className="text-green-600 dark:text-green-400" size={20} />
+                    <Activity className="text-blue-600 dark:text-blue-400" size={20} />
                     <h3 className="text-lg font-bold text-gray-800 dark:text-white">Devam Eden Denetimler ({continuingEvents.length})</h3>
                   </div>
-                  <div className="flex flex-col gap-4">
-                    {continuingEvents.map(event => (
-                      <div key={event.id} className="relative group w-full">
-                        <div
-                          onClick={() => handleStartAuditClick(event.id)}
-                          className="cursor-pointer bg-white dark:bg-gray-800 border border-green-200 dark:border-green-800 p-4 sm:p-5 rounded-xl shadow-sm hover:shadow-md hover:border-green-400 dark:hover:border-green-600 transition text-left"
-                        >
+                  <div className="space-y-4">
+                    {continuingEvents.map(event => {
+                      const entries = scannedEntries[event.id] || [];
+                      const realCount = entries.length;
+                      const isLate = new Date(event.startDate) < new Date();
+
+                      return (
+                        <div key={event.id} className="bg-white dark:bg-[#0f172a] border border-blue-900/20 p-4 rounded-xl shadow-sm hover:shadow-md transition-all">
                           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                            <div className="flex-1">
-                              <h4 className="font-bold text-lg text-gray-900 dark:text-white group-hover:text-green-700 dark:group-hover:text-green-400 mb-2">{event.name}</h4>
-                              <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
-                                <span className="flex items-center gap-1">
-                                  <Clock size={14} />
-                                  {formatDate(event.startDate)}
+                            <div className="flex-1 space-y-3">
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-bold text-gray-900 dark:text-white text-base sm:text-lg">
+                                  {event.name}
+                                </h4>
+                                <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 text-[10px] font-bold rounded-full border border-blue-200 dark:border-blue-800">
+                                  DEVAM EDİYOR
                                 </span>
                               </div>
-                            </div>
 
-                            <div className="flex items-center gap-2">
-                              <span className="px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-bold rounded-full border border-green-200 dark:border-green-800 animate-pulse">
-                                AKTİF
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Calculate real count from entries */}
-                          {(() => {
-                            const entries = scannedEntries[event.id] || [];
-                            const realCount = entries.length;
-
-                            return (
-                              <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg border border-gray-100 dark:border-gray-700">
-                                <div className="flex justify-between items-end mb-2">
-                                  <div className="flex flex-col">
-                                    <span className="text-xs text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wider">Doluluk Oranı</span>
-                                    <div className="flex items-baseline gap-1">
-                                      <span className="text-xl font-bold text-gray-900 dark:text-white">{realCount}</span>
-                                      <span className="text-sm text-gray-400">/ {event.targetCount}</span>
-                                    </div>
-                                  </div>
-                                  <div className="text-right">
-                                    <span className="text-lg font-bold text-green-600 dark:text-green-400">{Math.round((realCount / event.targetCount) * 100)}%</span>
-                                  </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[10px] rounded-md border border-gray-200 dark:border-gray-700 font-medium">
+                                  <Clock size={10} />
+                                  {formatDateTime(event.startDate)}
                                 </div>
-
-                                <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2.5 overflow-hidden">
-                                  <div
-                                    className="bg-green-500 h-full rounded-full transition-all duration-500 ease-out"
-                                    style={{ width: `${Math.min(100, (realCount / event.targetCount) * 100)}%` }}
-                                  ></div>
-                                </div>
-
-                                {/* User Stats Breakdown (Horizontal) */}
-                                <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
-                                  <div className="flex flex-wrap gap-2">
-                                    {(() => {
-                                      const stats = entries.reduce((acc, entry) => {
-                                        const user = entry.recordedBy || 'Bilinmiyor';
-                                        acc[user] = (acc[user] || 0) + 1;
-                                        return acc;
-                                      }, {} as Record<string, number>);
-
-                                      if (Object.keys(stats).length === 0) return <span className="text-xs text-gray-400">Henüz kayıt yok</span>;
-
-                                      return Object.entries(stats).map(([user, count]) => (
-                                        <div key={user} className="flex items-center gap-1.5 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 px-2 py-1 rounded-md text-xs shadow-sm">
-                                          <UserIcon size={12} className="text-gray-400 dark:text-gray-300" />
-                                          <span className="text-gray-600 dark:text-gray-200 font-medium">{user}:</span>
-                                          <span className="font-bold text-gray-800 dark:text-white bg-gray-100 dark:bg-gray-500 px-1.5 rounded">{count}</span>
-                                        </div>
-                                      ));
-                                    })()}
-                                  </div>
+                                <span className="text-gray-300 dark:text-gray-600 hidden sm:inline">-</span>
+                                <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[10px] rounded-md border border-gray-200 dark:border-gray-700 font-medium">
+                                  <Clock size={10} />
+                                  {formatDateTime(event.endDate)}
                                 </div>
                               </div>
-                            );
-                          })()}
 
-                          <div className="mt-4 flex items-center justify-between pt-3 border-t border-gray-100 dark:border-gray-700">
-                            <div className="flex items-center gap-2 group/btn">
-                              <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-green-600 dark:text-green-400 group-hover/btn:scale-110 transition-transform">
-                                <Play size={16} className="fill-current" />
+                              <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 font-medium tracking-tight">
+                                <span>Hedef: {event.targetCount}</span>
+                                <span className="text-gray-300 dark:text-gray-600">•</span>
+                                <span className="text-blue-600 dark:text-blue-400 font-bold">
+                                  {realCount} / {event.targetCount}
+                                </span>
                               </div>
-                              <span className="font-bold text-green-700 dark:text-green-400 text-sm group-hover/btn:underline decoration-2 underline-offset-2">Denetime Devam Et</span>
+
+                              <div className="w-full max-w-sm bg-gray-100 dark:bg-gray-800 h-1.5 rounded-full overflow-hidden">
+                                <div
+                                  className="bg-blue-600 h-full transition-all duration-500"
+                                  style={{ width: `${Math.min(100, (realCount / event.targetCount) * 100)}%` }}
+                                ></div>
+                              </div>
                             </div>
 
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
                               <button
-                                onClick={(e) => { e.stopPropagation(); setViewingEvent(event); }}
-                                className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
+                                onClick={() => handleStartAuditClick(event.id)}
+                                className="p-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-all active:scale-95 flex items-center justify-center"
+                                title="Denetime Devam Et"
+                              >
+                                <Play size={18} className="fill-current" />
+                              </button>
+                              <button
+                                onClick={() => setViewingEvent(event)}
+                                className="p-2.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-all"
                                 title="Listeyi Gör"
                               >
                                 <Eye size={18} />
                               </button>
                               {isAdmin && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleStartEditEvent(event); }}
-                                  className="p-2 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition"
-                                  title="Düzenle"
-                                >
-                                  <Edit size={18} />
-                                </button>
-                              )}
-                              {isAdmin && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); onDeleteEvent(event.id); }}
-                                  className="p-2 text-red-400 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
-                                  title="Sil"
-                                >
-                                  <Trash2 size={18} />
-                                </button>
+                                <>
+                                  <button
+                                    onClick={() => handleStartEditEvent(event)}
+                                    className="p-2.5 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-lg transition-all"
+                                    title="Düzenle"
+                                  >
+                                    <Edit size={18} />
+                                  </button>
+                                  <button
+                                    onClick={() => onDeleteEvent(event.id)}
+                                    className="p-2.5 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg transition-all"
+                                    title="Sil"
+                                  >
+                                    <Trash2 size={18} />
+                                  </button>
+                                </>
                               )}
                             </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )
@@ -879,12 +865,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 : "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 opacity-75 hover:opacity-100";
 
                               return (
-                                <div key={event.id} className={`rounded - lg p - 2 sm: p - 2 flex flex - col sm: flex - row justify - between items - start sm: items - center gap - 2 transition ${cardClass} `}>
+                                <div key={event.id} className={`rounded-lg p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 transition ${cardClass}`}>
                                   <div className="w-full sm:w-auto">
-                                    <h4 className="font-bold text-gray-800 dark:text-white text-xs sm:text-sm flex items-center gap-2">
+                                    <h4 className="font-bold text-gray-800 dark:text-white text-xs sm:text-sm flex flex-wrap gap-1 items-center">
                                       {event.name}
                                       {isRecent && hasUnknownPersonnel && (
-                                        <span className="flex items-center gap-1 text-[10px] bg-[#3f1616] text-red-500 px-2 py-0.5 rounded-full border border-red-900/50 whitespace-nowrap">
+                                        <span className="flex items-center gap-1 text-[10px] bg-[#3f1616] text-red-500 px-2 py-0.5 rounded-full border border-red-900/50 whitespace-nowrap ml-2">
                                           <AlertTriangle size={10} />
                                           Belirsiz Personel
                                         </span>
@@ -892,21 +878,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     </h4>
 
                                     {isRecent ? (
-                                      <div className="flex flex-wrap items-center gap-2 mt-1.5 text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">
+                                      <div className="flex flex-wrap items-center gap-3 mt-2 text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">
                                         <span className="text-gray-500 dark:text-gray-400">Tamamlandı</span>
                                         <span className="text-gray-300 dark:text-gray-600">•</span>
-                                        <span className="font-mono">{(scannedEntries[event.id]?.length || event.currentCount)}/{event.targetCount}</span>
+                                        <span className="font-mono text-gray-700 dark:text-gray-300">
+                                          {(scannedEntries[event.id]?.length || event.currentCount)} / {event.targetCount}
+                                        </span>
+
                                         {event.completionDuration && (
                                           <>
                                             <span className="text-gray-300 dark:text-gray-600">•</span>
-                                            <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800/50 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 font-mono">
+                                            <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700">
                                               <Clock size={10} />
-                                              {event.completionDuration}
+                                              <span className="font-mono">{event.completionDuration}</span>
                                             </div>
                                           </>
                                         )}
                                       </div>
-                                    ) : null}
+                                    ) : (
+                                      <div className="mt-1 text-[10px] text-gray-400">
+                                        Veriler arşivlenmiş (Görmek için Yenile)
+                                      </div>
+                                    )}
                                   </div>
 
                                   <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
@@ -929,30 +922,36 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                               <Edit size={16} />
                                             </button>
                                             <button
-                                              onClick={() => onReactivateEvent(event.id)}
-                                              className="p-1.5 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 transition"
-                                              title="İade Et"
+                                              onClick={() => {
+                                                // Reuse the refresh logic for single event? Or just reload all.
+                                                // For now, reload all.
+                                                const icon = document.getElementById('refresh-icon-spin');
+                                                if (icon) {
+                                                  icon.classList.add('animate-spin');
+                                                  setTimeout(() => icon.classList.remove('animate-spin'), 1000);
+                                                }
+                                                onRefreshPassiveData(recentPassiveEvents.map(e => e.id));
+                                              }}
+                                              className="p-1.5 text-blue-400 hover:text-blue-600 dark:text-blue-300 dark:hover:text-blue-200 transition"
+                                              title="Verileri Yenile"
                                             >
                                               <RefreshCw size={16} />
-                                            </button>
-                                            <button
-                                              onClick={() => onDeleteEvent(event.id)}
-                                              className="p-1.5 text-red-500 hover:text-red-600 dark:text-red-500 dark:hover:text-red-400 transition"
-                                              title="Sil"
-                                            >
-                                              <Trash2 size={16} />
                                             </button>
                                           </>
                                         )}
                                       </>
                                     )}
-                                    {!isRecent && isAdmin && (
+                                    {isAdmin && (
                                       <button
-                                        onClick={() => onDeleteEvent(event.id)}
-                                        className="p-2 text-gray-300 hover:text-red-400 dark:text-gray-600 dark:hover:text-red-300 transition"
-                                        title="Etkinliği Sil"
+                                        onClick={() => {
+                                          if (confirm('Bu etkinliği silmek istediğinize emin misiniz?')) {
+                                            onDeleteEvent(event.id);
+                                          }
+                                        }}
+                                        className="p-1.5 text-gray-400 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400 transition"
+                                        title="Sil"
                                       >
-                                        <Trash2 size={14} />
+                                        <Trash2 size={16} />
                                       </button>
                                     )}
                                   </div>
