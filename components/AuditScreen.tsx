@@ -372,9 +372,18 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       status = 'WARNING';
     }
 
+    // Check if we hit the company-specific target with this scan
+    if (activeCompanyName) {
+      const companyTarget = event.companies?.find(c => c.name === activeCompanyName)?.count || 0;
+      const companyCurrentCount = scannedList.filter(s => s.companyName === activeCompanyName).length + 1;
+      if (companyCurrentCount >= companyTarget) {
+        message = `✅ ${activeCompanyName} şirketinin hedef sayısına ulaşıldı! (${companyCurrentCount}/${companyTarget})`;
+      }
+    }
+
     // Check if we hit the total target with this scan
     if (scannedList.length + 1 >= event.targetCount) {
-      message = "🏁 TOPLAM HEDEF SAYIYA ULAŞILDI! Lütfen 'Denetimi Bitir' butonuna basın.";
+      message = "🏁 TÜM ŞİRKETLERİN TOPLAM HEDEF SAYISINA ULAŞILDI! Lütfen 'Denetimi Bitir' butonuna basın.";
     }
 
     const newEntry: ScanEntry = {
