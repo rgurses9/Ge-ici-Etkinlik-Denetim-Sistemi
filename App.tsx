@@ -250,64 +250,17 @@ const App: React.FC = () => {
         const cachedEntriesStr = localStorage.getItem('geds_scanned_entries_cache');
 
         if (!activeEventId) {
-          // DASHBOARD MODE: Load scanned entries for continuing events (ACTIVE with currentCount > 0)
-          const continuingEventIds = events
-            .filter(e => e.status === 'ACTIVE' && e.currentCount > 0)
-            .map(e => e.id);
-
-          if (continuingEventIds.length === 0) {
-            // Try cache first
-            if (cachedEntriesStr) {
-              try {
-                const cached = JSON.parse(cachedEntriesStr);
-                setScannedEntries(cached);
-              } catch (e) { setScannedEntries({}); }
-            } else {
-              setScannedEntries({});
-            }
-            return;
-          }
-
-          // Show cache immediately while fetching
+          // DASHBOARD MODE: Use ONLY cache (ZERO Firestore reads)
+          // Cache is updated during audits, so dashboard always has recent data
           if (cachedEntriesStr) {
             try {
-              const cached = JSON.parse(cachedEntriesStr);
-              const relevantCache: Record<string, ScanEntry[]> = {};
-              continuingEventIds.forEach(eid => {
-                if (cached[eid]) relevantCache[eid] = cached[eid];
-              });
-              if (Object.keys(relevantCache).length > 0) {
-                setScannedEntries(relevantCache);
-              }
-            } catch (e) { /* ignore */ }
+              const cached = JSON.parse(cachedEntriesStr) as Record<string, ScanEntry[]>;
+              setScannedEntries(cached);
+              console.log('📋 Dashboard: Loaded from cache (0 Firestore reads)');
+            } catch (e) { setScannedEntries({}); }
+          } else {
+            setScannedEntries({});
           }
-
-          // Fetch from Firestore
-          const allEntries: Record<string, ScanEntry[]> = {};
-          for (let i = 0; i < continuingEventIds.length; i += 10) {
-            const chunk = continuingEventIds.slice(i, i + 10);
-            const q = query(
-              collection(db, 'scanned_entries'),
-              where('eventId', 'in', chunk)
-            );
-            const snapshot = await getDocs(q);
-            snapshot.docs.forEach(d => {
-              const entry = d.data() as ScanEntry;
-              if (!allEntries[entry.eventId]) allEntries[entry.eventId] = [];
-              allEntries[entry.eventId].push(entry);
-            });
-          }
-
-          setScannedEntries(allEntries);
-
-          // Update cache
-          try {
-            const currentCacheStr = localStorage.getItem('geds_scanned_entries_cache');
-            let newCache = currentCacheStr ? JSON.parse(currentCacheStr) : {};
-            Object.assign(newCache, allEntries);
-            localStorage.setItem('geds_scanned_entries_cache', JSON.stringify(newCache));
-          } catch (e) { /* ignore */ }
-
           return;
         }
 
