@@ -216,7 +216,7 @@ interface AuditScreenProps {
   onFinish: (duration: string) => void;
   onScan: (entry: ScanEntry) => void; // This calls Firestore write
   onBulkScan: (entries: ScanEntry[]) => void;
-  onDelete: (entryId: string) => void;
+  onDelete: (entry: ScanEntry) => void;
   scannedList: ScanEntry[];
   allScannedEntries: Record<string, ScanEntry[]>; // For cross checking
   onCheckConflict: (tc: string, eventId: string) => Promise<string | null>;
@@ -257,10 +257,26 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     inputRef.current?.focus();
   }, []);
 
-  // Fetch from Google Sheets - NO CACHE as requested
+  // Fetch from Google Sheets - SMART CACHE (2 Hours)
   const loadData = async () => {
+    const CACHE_KEY = 'geds_worker_db_v2';
+    const TIME_KEY = 'geds_worker_db_time_v2';
+    const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 Hours
+
     try {
-      console.log('🌐 Fetching fresh database from Google Sheets...');
+      // Check Cache First
+      const cachedData = localStorage.getItem(CACHE_KEY);
+      const cachedTime = localStorage.getItem(TIME_KEY);
+      if (cachedData && cachedTime && (Date.now() - parseInt(cachedTime) < CACHE_DURATION)) {
+        console.log('📦 Using local cache for worker list');
+        const onlineCitizens = JSON.parse(cachedData) as Citizen[];
+        setDatabase([...onlineCitizens, ...MOCK_CITIZEN_DB]);
+        setDbStatus('READY');
+        onDatabaseUpdate(onlineCitizens);
+        return;
+      }
+
+      console.log('🌐 Cache expired or missing. Fetching fresh database from Google Sheets...');
       setDbStatus('LOADING');
       const workerRecords = await fetchSheetData();
       console.log(`Fetched ${workerRecords.length} worker records from Google Sheets`);
@@ -277,6 +293,14 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
         setDatabase([...onlineCitizens, ...MOCK_CITIZEN_DB]);
         setDbStatus('READY');
         onDatabaseUpdate(onlineCitizens);
+
+        // Save to cache
+        try {
+          localStorage.setItem(CACHE_KEY, JSON.stringify(onlineCitizens));
+          localStorage.setItem(TIME_KEY, Date.now().toString());
+        } catch (e) {
+          console.warn("Worker cache error:", e);
+        }
       } else {
         console.warn("Worker fetch returned empty. Using local mock data.");
         setDatabase(MOCK_CITIZEN_DB);
@@ -801,7 +825,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
                       </td>
                       <td className="px-3 py-1.5 text-right">
                         <button
-                          onClick={() => onDelete(entry.id)}
+                          onClick={() => onDelete(entry)}
                           className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"
                           title="Kaydı Sil"
                         >
