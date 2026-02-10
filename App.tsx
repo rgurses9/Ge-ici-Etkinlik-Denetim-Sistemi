@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Login from './components/Login';
 import AdminDashboard from './components/AdminDashboard';
 import AuditScreen from './components/AuditScreen';
@@ -43,6 +43,13 @@ const App: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [isUsersLoading, setIsUsersLoading] = useState(true);
   const [scannedEntries, setScannedEntries] = useState<Record<string, ScanEntry[]>>({});
+
+  // Ref to access latest events without triggering re-renders in effects
+  const eventsRef = useRef<Event[]>(events);
+  useEffect(() => { eventsRef.current = events; }, [events]);
+
+  // Flag to track if scanned entries have been loaded from cache already
+  const scannedEntriesCacheLoaded = useRef(false);
 
   // Theme State
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -222,6 +229,7 @@ const App: React.FC = () => {
   // A. Load Cache (Run once on auth)
   useEffect(() => {
     if (!session.isAuthenticated) return;
+    if (scannedEntriesCacheLoaded.current) return; // Prevent duplicate load
 
     const cachedEntriesStr = localStorage.getItem('geds_scanned_entries_cache');
     if (cachedEntriesStr) {
@@ -235,36 +243,30 @@ const App: React.FC = () => {
         console.warn('Failed to parse scanned entries cache', e);
       }
     }
+    scannedEntriesCacheLoaded.current = true;
   }, [session.isAuthenticated]);
 
-  // B. Scanned Entries (Load current event + overlapping events, or continuing events for dashboard)
+  // B. Scanned Entries (Load current event + overlapping events)
+  // CRITICAL: 'events' is NOT in the dependency array to avoid re-fetching on every scan.
+  // We use eventsRef.current to access events without causing re-triggers.
   useEffect(() => {
     if (!session.isAuthenticated) {
       setScannedEntries({});
+      scannedEntriesCacheLoaded.current = false;
       return;
     }
 
     const loadScannedEntries = async () => {
       try {
-        // 1. Try Cache First for instant UI
-        const cachedEntriesStr = localStorage.getItem('geds_scanned_entries_cache');
-
         if (!activeEventId) {
-          // DASHBOARD MODE: Use ONLY cache (ZERO Firestore reads)
-          // Cache is updated during audits, so dashboard always has recent data
-          if (cachedEntriesStr) {
-            try {
-              const cached = JSON.parse(cachedEntriesStr) as Record<string, ScanEntry[]>;
-              setScannedEntries(cached);
-              console.log('📋 Dashboard: Loaded from cache (0 Firestore reads)');
-            } catch (e) { setScannedEntries({}); }
-          } else {
-            setScannedEntries({});
-          }
+          // DASHBOARD MODE: Cache was already loaded in effect A above.
+          // Do nothing here to avoid redundant state updates.
           return;
         }
 
-        // AUDIT MODE: Load current event + overlapping events
+        // AUDIT MODE: Load current event + overlapping events from Firestore (ONE TIME)
+        // Show cache instantly first
+        const cachedEntriesStr = localStorage.getItem('geds_scanned_entries_cache');
         if (cachedEntriesStr) {
           const cached = JSON.parse(cachedEntriesStr);
           if (cached[activeEventId]) {
@@ -272,28 +274,27 @@ const App: React.FC = () => {
           }
         }
 
-        // 2. Find which events overlap with the current event (for conflict detection)
-        const currentEvent = events.find(e => e.id === activeEventId);
+        // Use eventsRef to avoid dependency on events
+        const currentEvents = eventsRef.current;
+        const currentEvent = currentEvents.find(e => e.id === activeEventId);
         if (!currentEvent) return;
 
         const currentStart = new Date(currentEvent.startDate).getTime();
         const currentEnd = new Date(currentEvent.endDate).getTime();
 
-        const overlappingEventIds = events
+        const overlappingEventIds = currentEvents
           .filter(e => {
-            if (e.id === activeEventId) return true; // Always load current event
+            if (e.id === activeEventId) return true;
             const eStart = new Date(e.startDate).getTime();
             const eEnd = new Date(e.endDate).getTime();
-            return currentStart < eEnd && currentEnd > eStart; // Time overlap check
+            return currentStart < eEnd && currentEnd > eStart;
           })
           .map(e => e.id);
 
         console.log(`📡 Loading scans for ${overlappingEventIds.length} overlapping events (ONE TIME READ)`);
 
-        // 3. Fetch scanned entries for all overlapping events
         const allEntries: Record<string, ScanEntry[]> = {};
 
-        // Firestore 'in' query supports max 30 values, chunk if needed
         for (let i = 0; i < overlappingEventIds.length; i += 10) {
           const chunk = overlappingEventIds.slice(i, i + 10);
           const q = query(
@@ -308,7 +309,6 @@ const App: React.FC = () => {
           });
         }
 
-        // Sort the current event's entries
         if (allEntries[activeEventId]) {
           allEntries[activeEventId].sort((a, b) =>
             (Number(b.serverTimestamp) || 0) - (Number(a.serverTimestamp) || 0)
@@ -333,7 +333,7 @@ const App: React.FC = () => {
     };
 
     loadScannedEntries();
-  }, [session.isAuthenticated, activeEventId, events]);
+  }, [session.isAuthenticated, activeEventId]);
 
   // Auto-sync scanned entries to cache
   useEffect(() => {
@@ -652,30 +652,48 @@ const App: React.FC = () => {
   };
 
   const handleAddUser = async (user: User) => {
+    // Optimistic Update (no need to re-read users collection)
+    setUsers(prev => [...prev, user]);
     try {
       await setDoc(doc(db, 'users', user.id), user);
+      // Update cache
+      localStorage.setItem('geds_users_cache', JSON.stringify([...users, user]));
     } catch (e) {
       console.error("Error adding user: ", e);
+      // Rollback
+      setUsers(prev => prev.filter(u => u.id !== user.id));
     }
   }
 
   const handleUpdateUser = async (updatedUser: User) => {
+    // Optimistic Update
+    setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
     try {
       await setDoc(doc(db, 'users', updatedUser.id), updatedUser);
+      // Update cache
+      const updatedUsers = users.map(u => u.id === updatedUser.id ? updatedUser : u);
+      localStorage.setItem('geds_users_cache', JSON.stringify(updatedUsers));
     } catch (e) {
       console.error("Error updating user: ", e);
     }
   };
 
   const handleDeleteUser = async (userId: string) => {
+    if (session.currentUser?.id === userId) {
+      alert("Kendinizi silemezsiniz!");
+      return;
+    }
+    // Optimistic Update
+    const previousUsers = users;
+    setUsers(prev => prev.filter(u => u.id !== userId));
     try {
-      if (session.currentUser?.id === userId) {
-        alert("Kendinizi silemezsiniz!");
-        return;
-      }
       await deleteDoc(doc(db, 'users', userId));
+      // Update cache
+      localStorage.setItem('geds_users_cache', JSON.stringify(users.filter(u => u.id !== userId)));
     } catch (e) {
       console.error("Error deleting user: ", e);
+      // Rollback
+      setUsers(previousUsers);
     }
   };
 
