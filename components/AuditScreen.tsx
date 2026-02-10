@@ -333,7 +333,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     }
 
     if (scannedList.length >= event.targetCount) {
-      setLastScanResult({ status: 'ERROR', message: 'Hedef kişi sayısına ulaşıldı. Daha fazla kayıt yapılamaz. Denetlemeyi bitir' });
+      setLastScanResult({ status: 'ERROR', message: 'Toplam hedef kişi sayısına ulaşıldı. Daha fazla kayıt yapılamaz. Denetlemeyi bitir' });
       setTcInput('');
       return;
     }
@@ -374,9 +374,9 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       status = 'WARNING';
     }
 
-    // Check if we hit the target with this scan
+    // Check if we hit the total target with this scan
     if (scannedList.length + 1 >= event.targetCount) {
-      message = "🏁 HEDEF SAYIYA ULAŞILDI! Lütfen 'Denetimi Bitir' butonuna basın.";
+      message = "🏁 TOPLAM HEDEF SAYIYA ULAŞILDI! Lütfen 'Denetimi Bitir' butonuna basın.";
     }
 
     const newEntry: ScanEntry = {
@@ -384,7 +384,8 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       eventId: event.id,
       citizen: citizen,
       timestamp: new Date().toLocaleTimeString(),
-      recordedBy: currentUser.username
+      recordedBy: currentUser.username,
+      companyName: activeCompanyName || undefined
     };
 
     // Fire and forget (Optimistic UI handled by Firestore listener in App.tsx)
@@ -504,7 +505,8 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
           eventId: event.id,
           citizen: citizen,
           timestamp: currentTimestamp,
-          recordedBy: currentUser.username
+          recordedBy: currentUser.username,
+          companyName: activeCompanyName || undefined
         });
 
         successCount++;
@@ -541,6 +543,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
         "TC Kimlik No": item.citizen.tc,
         "Ad": item.citizen.name,
         "Soyad": item.citizen.surname,
+        "Şirket": item.companyName || '-',
         "Geçerlilik Tarihi": item.citizen.validityDate,
         "Durum": status.text,
         "Okutma Saati": item.timestamp,
@@ -602,12 +605,13 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     }
   };
 
-  // Determine effective target (company-specific or total)
+  // Determine effective target for progress display (company-specific)
   const effectiveTarget = activeCompanyName
     ? (event.companies?.find(c => c.name === activeCompanyName)?.count || event.targetCount)
     : event.targetCount;
   const progressPercentage = Math.min(100, Math.round((scannedList.length / effectiveTarget) * 100));
-  const isTargetReached = scannedList.length >= effectiveTarget;
+  // Finish button requires TOTAL event target (all companies combined)
+  const isTargetReached = scannedList.length >= event.targetCount;
 
   if (showSummary) {
     return (

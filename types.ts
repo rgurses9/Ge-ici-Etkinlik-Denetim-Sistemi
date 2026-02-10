@@ -43,6 +43,7 @@ export interface ScanEntry {
   citizen: Citizen;
   timestamp: string;
   recordedBy: string; // The username of the person who scanned this entry
+  companyName?: string; // Which company this scan belongs to
   serverTimestamp?: number; // Added for reliable local sorting without complex indexes
 }
 
