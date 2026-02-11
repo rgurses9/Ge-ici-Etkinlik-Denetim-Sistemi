@@ -26,3 +26,4 @@ migration-progress.json
 
 # Vercel environment setup (contains sensitive data)
 vercel-env-setup.md
+.vercel
