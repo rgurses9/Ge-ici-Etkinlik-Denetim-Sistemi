@@ -54,7 +54,7 @@ const App: React.FC = () => {
   // Per-event fetch timestamp tracker: eventId -> last fetch time (ms)
   // If data was fetched within SCAN_CACHE_TTL, skip Firestore read
   const eventFetchTimestamps = useRef<Record<string, number>>({});
-  const SCAN_CACHE_TTL = 30 * 60 * 1000; // 30 dakika
+  const SCAN_CACHE_TTL = 2 * 60 * 60 * 1000; // 2 saat
 
   // Theme State
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -128,22 +128,25 @@ const App: React.FC = () => {
     }
   };
 
-  // 1. Users Loading (Cache-First with 2-hour TTL)
+  // 1. Users Loading (Cache-First with 24-hour TTL)
   useEffect(() => {
-    const USERS_TTL = 2 * 60 * 60 * 1000; // 2 saat
+    const USERS_TTL = 24 * 60 * 60 * 1000; // 24 saat
     const loadUsers = async () => {
       const cachedUsers = localStorage.getItem('geds_users_cache');
+
+      // TTL kontrolü: Son 24 saat içinde çekildiyse Firestore'a gitme
+      const lastFetch = localStorage.getItem('geds_users_fetch_ts');
+      if (lastFetch && cachedUsers && (Date.now() - Number(lastFetch)) < USERS_TTL) {
+        console.log('👤 Users cache taze (24 saat dolmadı), Firestore sorgusu atlandı.');
+        setUsers(JSON.parse(cachedUsers));
+        setIsUsersLoading(false);
+        return;
+      }
+
+      // Cache varsa hemen göster (TTL dolmuş olsa bile UI'ı bloklamaz)
       if (cachedUsers) {
         setUsers(JSON.parse(cachedUsers));
         setIsUsersLoading(false);
-      }
-
-      // TTL kontrolü: Son 2 saat içinde çekildiyse Firestore'a gitme
-      const lastFetch = localStorage.getItem('geds_users_fetch_ts');
-      if (lastFetch && cachedUsers && (Date.now() - Number(lastFetch)) < USERS_TTL) {
-        console.log('👤 Users cache taze (2 saat dolmadı), Firestore sorgusu atlandı.');
-        setIsUsersLoading(false);
-        return;
       }
 
       try {
@@ -165,24 +168,27 @@ const App: React.FC = () => {
     loadUsers();
   }, []);
 
-  // 2. Events Loading (Cache-First with 2-hour TTL)
+  // 2. Events Loading (Cache-First with 12-hour TTL)
   useEffect(() => {
     if (!session.isAuthenticated) return;
-    const EVENTS_TTL = 2 * 60 * 60 * 1000; // 2 saat
+    const EVENTS_TTL = 12 * 60 * 60 * 1000; // 12 saat
 
     const loadEventsOnce = async () => {
       try {
         // Cache'den yükle (anında UI)
         const cachedEvents = localStorage.getItem('geds_events_cache');
-        if (cachedEvents) {
-          setEvents(JSON.parse(cachedEvents));
-        }
 
-        // TTL kontrolü: Son 2 saat içinde çekildiyse Firestore'a gitme
+        // TTL kontrolü: Son 12 saat içinde çekildiyse Firestore'a gitme
         const lastFetch = localStorage.getItem('geds_events_fetch_ts');
         if (lastFetch && cachedEvents && (Date.now() - Number(lastFetch)) < EVENTS_TTL) {
-          console.log('📋 Events cache taze (2 saat dolmadı), Firestore sorgusu atlandı.');
+          console.log('📋 Events cache taze (12 saat dolmadı), Firestore sorgusu atlandı.');
+          setEvents(JSON.parse(cachedEvents));
           return;
+        }
+
+        // Cache varsa hemen göster (TTL dolmuş olsa bile UI'ı bloklamaz)
+        if (cachedEvents) {
+          setEvents(JSON.parse(cachedEvents));
         }
 
         console.log('📡 Fetching events from server...');
