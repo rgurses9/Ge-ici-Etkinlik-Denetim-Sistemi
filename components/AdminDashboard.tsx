@@ -1684,15 +1684,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               <div className="flex-1 overflow-auto p-0">
-                <table className="w-full text-left text-xs sm:text-sm">
+                <table className="w-full text-center text-xs sm:text-sm">
                   <thead className="bg-gray-50 dark:bg-gray-900/30 border-b border-gray-200 dark:border-gray-700 sticky top-0">
                     <tr>
-                      <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400">NO</th>
-                      <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400">TC</th>
-                      <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400">Ad Soyad</th>
-                      <th className="hidden sm:table-cell px-6 py-3 font-medium text-gray-500 dark:text-gray-400">Durum</th>
-                      <th className="hidden sm:table-cell px-6 py-3 font-medium text-gray-500 dark:text-gray-400">Saat</th>
-                      <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">Kaydeden</th>
+                      <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">NO</th>
+                      <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">TC</th>
+                      <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">Ad Soyad</th>
+                      <th className="hidden sm:table-cell px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">Durum</th>
+                      <th className="hidden sm:table-cell px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">Saat</th>
+                      <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">Kaydeden</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -1701,22 +1701,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       const status = checkWorkStatus(entry.citizen.validityDate);
                       return (
                         <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                          <td className="px-4 sm:px-6 py-3 text-gray-500 dark:text-gray-400">{index + 1}</td>
-                          <td className="px-4 sm:px-6 py-3 font-mono text-gray-900 dark:text-gray-200">{entry.citizen.tc}</td>
-                          <td className="px-4 sm:px-6 py-3 font-medium text-gray-900 dark:text-gray-200">{entry.citizen.name} {entry.citizen.surname}</td>
-                          <td className="hidden sm:table-cell px-6 py-3">
-                            <span className={`inline - flex items - center px - 2 py - 0.5 rounded text - [10px] font - bold ${status.bg} ${status.color} `}>
+                          <td className="px-4 sm:px-6 py-3 text-gray-500 dark:text-gray-400 text-center">{index + 1}</td>
+                          <td className="px-4 sm:px-6 py-3 font-mono text-gray-900 dark:text-gray-200 text-center">{entry.citizen.tc}</td>
+                          <td className="px-4 sm:px-6 py-3 font-medium text-gray-900 dark:text-gray-200 text-center">{entry.citizen.name} {entry.citizen.surname}</td>
+                          <td className="hidden sm:table-cell px-6 py-3 text-center">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${status.bg} ${status.color}`}>
                               {status.text}
                             </span>
                           </td>
-                          <td className="hidden sm:table-cell px-6 py-3 text-gray-500 dark:text-gray-400">{entry.timestamp}</td>
-                          <td className="px-6 py-3 text-gray-500 dark:text-gray-400 font-medium">{entry.recordedBy || '-'}</td>
+                          <td className="hidden sm:table-cell px-6 py-3 text-gray-500 dark:text-gray-400 text-center">{entry.timestamp}</td>
+                          <td className="px-6 py-3 text-gray-500 dark:text-gray-400 font-medium text-center">{entry.recordedBy || '-'}</td>
                         </tr>
                       )
                     })}
                     {(!scannedEntries[viewingEvent.id] || scannedEntries[viewingEvent.id].length === 0) && (
                       <tr>
-                        <td colSpan={5} className="px-6 py-8 text-center text-gray-400 dark:text-gray-500">
+                        <td colSpan={6} className="px-6 py-8 text-center text-gray-400 dark:text-gray-500">
                           Henüz kayıt bulunmamaktadır.
                         </td>
                       </tr>
