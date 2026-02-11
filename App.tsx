@@ -17,9 +17,25 @@ import {
   orderBy,
   writeBatch,
   getDocs,
+  getDocsFromCache,
   where,
   increment
 } from 'firebase/firestore';
+
+// Yardımcı: Önce Firestore IndexedDB cache'inden oku, başarısız olursa sunucudan çek
+const getDocsCacheFirst = async (q: any) => {
+  try {
+    const cached = await getDocsFromCache(q);
+    if (!cached.empty) {
+      console.log(`📦 Cache'den okundu (${cached.size} doküman)`);
+      return cached;
+    }
+  } catch (e) {
+    // Cache boş veya hata — sunucudan çek
+  }
+  console.log('🌐 Sunucudan çekiliyor...');
+  return getDocs(q);
+};
 
 const App: React.FC = () => {
   // --- Global State ---
@@ -103,10 +119,11 @@ const App: React.FC = () => {
 
   // Refresh users function (for login troubleshooting)
   const loadUsersFromFirebase = async (forceRefresh = false) => {
-    console.log('🔄 Refreshing users from Firebase...');
+    console.log('🔄 Refreshing users from Firebase (force)...');
     setIsUsersLoading(true);
     try {
       const q = query(collection(db, 'users'), orderBy('username', 'asc'));
+      // Force refresh: sunucudan çek
       const snapshot = await getDocs(q);
       const fetchedUsers: User[] = snapshot.docs.map(doc => doc.data() as User);
 
@@ -118,6 +135,8 @@ const App: React.FC = () => {
         setUsers(INITIAL_USERS);
       } else {
         setUsers(fetchedUsers);
+        localStorage.setItem('geds_users_cache', JSON.stringify(fetchedUsers));
+        localStorage.setItem('geds_users_fetch_ts', Date.now().toString());
         console.log(`✅ Users refreshed: ${fetchedUsers.length}`);
       }
     } catch (error: any) {
@@ -151,7 +170,7 @@ const App: React.FC = () => {
 
       try {
         const q = query(collection(db, 'users'));
-        const snapshot = await getDocs(q);
+        const snapshot = await getDocsCacheFirst(q);
         const fetchedUsers: User[] = snapshot.docs.map(doc => doc.data() as User);
 
         if (fetchedUsers.length > 0) {
@@ -191,9 +210,9 @@ const App: React.FC = () => {
           setEvents(JSON.parse(cachedEvents));
         }
 
-        console.log('📡 Fetching events from server...');
+        console.log('📡 Fetching events (cache-first)...');
         const q = query(collection(db, 'events'), orderBy('startDate', 'asc'));
-        const snapshot = await getDocs(q);
+        const snapshot = await getDocsCacheFirst(q);
         const fetchedEvents: Event[] = snapshot.docs.map(doc => doc.data() as Event);
 
         setEvents(fetchedEvents);
@@ -341,7 +360,7 @@ const App: React.FC = () => {
             collection(db, 'scanned_entries'),
             where('eventId', 'in', chunk)
           );
-          const snapshot = await getDocs(q);
+          const snapshot = await getDocsCacheFirst(q);
           snapshot.docs.forEach(d => {
             const entry = d.data() as ScanEntry;
             if (!allEntries[entry.eventId]) allEntries[entry.eventId] = [];

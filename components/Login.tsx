@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { User, UserRole } from '../types';
 import { db } from '../firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, getDocsFromCache } from 'firebase/firestore';
 import { Lock, User as UserIcon, Settings, Eye, EyeOff, BookOpen, X, HelpCircle, AlertCircle, CheckCircle, Info, Sun, Moon } from 'lucide-react';
 
 interface LoginProps {
@@ -49,7 +49,13 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
         // Only query if local list is empty and not loading (rare edge case)
         console.log('⚠️ Local user list empty, trying direct query...');
         const q = query(collection(db, 'users'), where('username', '==', cleanUsername), where('password', '==', cleanPassword));
-        const snapshot = await getDocs(q);
+        // Önce cache'den dene
+        let snapshot;
+        try {
+          snapshot = await getDocsFromCache(q);
+        } catch {
+          snapshot = await getDocs(q);
+        }
         if (!snapshot.empty) {
           user = snapshot.docs[0].data() as User;
         }
