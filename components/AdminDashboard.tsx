@@ -970,12 +970,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 );
                               })()}
 
-                              <div className="w-full max-w-sm bg-gray-100 dark:bg-gray-800 h-1 rounded-full overflow-hidden">
-                                <div
-                                  className="bg-green-600 h-full transition-all duration-500"
-                                  style={{ width: `${Math.min(100, (realCount / event.targetCount) * 100)}%` }}
-                                ></div>
-                              </div>
+
                             </div>
 
                             <div className="flex items-center gap-2 shrink-0 sm:self-start mt-0.5">
