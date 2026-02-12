@@ -368,7 +368,7 @@ const App: React.FC = () => {
           collection(db, 'scanned_entries'),
           where('eventId', '==', activeEventId),
           orderBy('serverTimestamp', 'desc'),
-          limit(500) // Son 500 scan (performans için)
+          limit(2000) // Son 2000 scan
         );
 
         const unsubscribe = onSnapshot(q, async (snapshot) => {
