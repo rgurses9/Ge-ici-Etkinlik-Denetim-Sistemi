@@ -804,7 +804,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div className="space-y-4">
                     {continuingEvents.map(event => {
                       const entries = scannedEntries[event.id] || [];
-                      const realCount = entries.length;
+                      // FIX: Use event.currentCount for reliable real-time totals (dashboard doesn't fetch all entries)
+                      const realCount = event.currentCount || entries.length;
                       const isLate = new Date(event.startDate) < new Date();
 
                       return (
@@ -846,11 +847,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
                                   {event.companies.map((company, cIdx) => {
                                     const companyEntries = entries.filter(e => e.companyName === company.name);
+                                    // If we have entries, use them. If not, we might not have breakdown. 
+                                    // TODO: Update backend to store company counts in event object for optimized display.
                                     const companyCount = companyEntries.length;
                                     const companyPct = Math.min(100, Math.round((companyCount / company.count) * 100));
                                     const companyReached = companyCount >= company.count;
 
-                                    // Per-user stats for this company
+                                    // Per-user stats for this company (requires entries)
                                     const companyUserStats = companyEntries.reduce((acc, entry) => {
                                       const user = entry.recordedBy || 'Bilinmiyor';
                                       acc[user] = (acc[user] || 0) + 1;
@@ -902,12 +905,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                               {/* User Scan Counts (for non-company events) */}
                               {(!event.companies || event.companies.length === 0) && (() => {
-                                if (entries.length === 0) return null;
-                                const userStats = entries.reduce((acc, entry) => {
-                                  const user = entry.recordedBy || 'Bilinmiyor';
-                                  acc[user] = (acc[user] || 0) + 1;
-                                  return acc;
-                                }, {} as Record<string, number>);
+                                const userStats = entries.length > 0
+                                  ? entries.reduce((acc, entry) => {
+                                    const user = entry.recordedBy || 'Bilinmiyor';
+                                    acc[user] = (acc[user] || 0) + 1;
+                                    return acc;
+                                  }, {} as Record<string, number>)
+                                  : (event.userCounts || {});
+
+                                if (Object.keys(userStats).length === 0) return null;
 
                                 return (
                                   <div className="flex flex-wrap gap-1.5 mt-1">
