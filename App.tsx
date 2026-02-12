@@ -840,6 +840,44 @@ const App: React.FC = () => {
     }
   };
 
+  const handleSyncEventData = async (eventId: string) => {
+    if (!confirm('Senkronizasyon işlemi veritabanındaki tüm kayıtları tarayacaktır. Devam etmek istiyor musunuz?')) return;
+    try {
+      // 1. Fetch all entries for this event
+      const q = query(collection(db, 'scanned_entries'), where('eventId', '==', eventId));
+      const snapshot = await getDocs(q);
+      const allEntries = snapshot.docs.map(doc => doc.data() as ScanEntry);
+
+      // 2. Recalculate stats
+      const stats = {
+        currentCount: allEntries.length,
+        userCounts: {} as Record<string, number>,
+        companyCounts: {} as Record<string, number>,
+        companyUserCounts: {} as Record<string, number>
+      };
+
+      allEntries.forEach(entry => {
+        const user = entry.recordedBy || 'Bilinmiyor';
+        stats.userCounts[user] = (stats.userCounts[user] || 0) + 1;
+
+        if (entry.companyName) {
+          const safeComp = entry.companyName.replace(/\./g, '_');
+          const safeUser = user.replace(/\./g, '_');
+          stats.companyCounts[safeComp] = (stats.companyCounts[safeComp] || 0) + 1;
+          const key = `${safeComp}__${safeUser}`;
+          stats.companyUserCounts[key] = (stats.companyUserCounts[key] || 0) + 1;
+        }
+      });
+
+      // 3. Update Event Doc
+      await updateDoc(doc(db, 'events', eventId), stats);
+      alert('Senkronizasyon başarıyla tamamlandı.');
+    } catch (e) {
+      console.error(e);
+      alert('Hata oluştu.');
+    }
+  };
+
   // --- Render Logic ---
 
   if (!session.isAuthenticated || !session.currentUser) {
@@ -896,9 +934,10 @@ const App: React.FC = () => {
       onUpdateUser={handleUpdateUser}
       onDeleteUser={handleDeleteUser}
       onUpdateEvent={handleUpdateEvent}
+      onRefreshPassiveData={refreshPassiveData}
+      onSyncEvent={handleSyncEventData}
       isDarkMode={isDarkMode}
       onToggleTheme={toggleTheme}
-      onRefreshPassiveData={refreshPassiveData}
     />
   );
 };

@@ -20,6 +20,7 @@ interface AdminDashboardProps {
   onDeleteUser: (userId: string) => Promise<void>;
   onUpdateEvent: (event: Event) => void;
   onRefreshPassiveData: (eventIds: string[]) => Promise<void>;
+  onSyncEvent: (eventId: string) => Promise<void>;
   isDarkMode: boolean;
   onToggleTheme: () => void;
 }
@@ -38,6 +39,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onUpdateUser,
   onUpdateEvent,
   onRefreshPassiveData,
+  onSyncEvent,
   isDarkMode,
   onToggleTheme
 }) => {
@@ -985,6 +987,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     title="Düzenle"
                                   >
                                     <Edit size={16} />
+                                  </button>
+                                  <button
+                                    onClick={() => onSyncEvent(event.id)}
+                                    className="p-1.5 text-orange-500 hover:text-orange-600 dark:text-orange-400 dark:hover:text-orange-300 bg-orange-50 dark:bg-orange-900/30 hover:bg-orange-100 dark:hover:bg-orange-900/50 rounded-lg transition-all"
+                                    title="Verileri Senkronize Et (Hata Düzeltme)"
+                                  >
+                                    <RefreshCw size={16} />
                                   </button>
                                   <button
                                     onClick={() => onDeleteEvent(event.id)}
