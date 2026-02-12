@@ -361,15 +361,43 @@ const App: React.FC = () => {
           })
           .map(e => e.id);
 
-        console.log(`📡 Setting up real-time listener for active event's scans only...`);
+        console.log(`📡 Setting up real-time listeners for ${overlappingEventIds.length} events...`);
 
-        // 3. Real-time listener SADECE aktif event için (overlapping'ler cache'den)
-        const q = query(
-          collection(db, 'scanned_entries'),
-          where('eventId', '==', activeEventId),
-          orderBy('serverTimestamp', 'desc'),
-          limit(2000) // Son 2000 scan
-        );
+        // 3. Real-time listeners for ALL overlapping events (multi-user sync)
+        const unsubscribers: (() => void)[] = [];
+
+        for (const eventId of overlappingEventIds) {
+          const scanLimit = eventId === activeEventId ? 2000 : 500;
+
+          const q = query(
+            collection(db, 'scanned_entries'),
+            where('eventId', '==', eventId),
+            orderBy('serverTimestamp', 'desc'),
+            limit(scanLimit)
+          );
+
+          const unsubscribe = onSnapshot(q, (snapshot) => {
+            setScannedEntries(prev => ({
+              ...prev,
+              [eventId]: snapshot.docs.map(d => d.data() as ScanEntry)
+            }));
+
+            if (eventId === activeEventId) {
+              console.log(`✅ Active scans updated: ${snapshot.size}`);
+            }
+
+            try {
+              const cache = localStorage.getItem('geds_scanned_entries_cache');
+              const newCache = cache ? JSON.parse(cache) : {};
+              newCache[eventId] = snapshot.docs.map(d => d.data() as ScanEntry);
+              localStorage.setItem('geds_scanned_entries_cache', JSON.stringify(newCache));
+            } catch (e) { }
+          }, (error) => {
+            console.error(`Listener error (${eventId}):`, error);
+          });
+
+          unsubscribers.push(unsubscribe);
+        }
 
         const unsubscribe = onSnapshot(q, async (snapshot) => {
           const activeEntries: ScanEntry[] = snapshot.docs.map(d => d.data() as ScanEntry);
@@ -420,10 +448,10 @@ const App: React.FC = () => {
           console.error('Scanned entries listener error:', error);
         });
 
-        // Cleanup function
+        // Cleanup
         return () => {
-          console.log('🔌 Scanned entries listener closed.');
-          unsubscribe();
+          console.log('🔌 Listeners closed.');
+          unsubscribers.forEach(unsub => unsub());
         };
 
       } catch (e) {
