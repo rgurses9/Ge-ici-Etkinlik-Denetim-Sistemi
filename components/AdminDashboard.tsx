@@ -847,12 +847,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
                                   {event.companies.map((company, cIdx) => {
                                     const companyEntries = entries.filter(e => e.companyName === company.name);
-
-                                    // FIX: Use Firestore counters if available (for mobile dashboard)
+                                    // FIX: Use Maximum of (entries count) and (Firestore counter) to ensure reliability
+                                    // This handles cases where:
+                                    // 1. Mobile view (entries empty, counter has data) -> Counter used
+                                    // 2. Desktop view (entries loaded) -> Entries used
+                                    // 3. Partial sync/lag -> Maximum value used
                                     const safeKey = company.name.replace(/\./g, '_');
-                                    const companyCount = companyEntries.length > 0
-                                      ? companyEntries.length
-                                      : (event.companyCounts?.[safeKey] || 0);
+                                    const firestoreCount = event.companyCounts?.[safeKey] || 0;
+                                    const companyCount = Math.max(companyEntries.length, firestoreCount);
                                     const companyPct = Math.min(100, Math.round((companyCount / company.count) * 100));
                                     const companyReached = companyCount >= company.count;
 
