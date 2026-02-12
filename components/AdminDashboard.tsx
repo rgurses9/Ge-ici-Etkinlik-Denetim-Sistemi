@@ -854,11 +854,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     const companyReached = companyCount >= company.count;
 
                                     // Per-user stats for this company (requires entries)
-                                    const companyUserStats = companyEntries.reduce((acc, entry) => {
-                                      const user = entry.recordedBy || 'Bilinmiyor';
-                                      acc[user] = (acc[user] || 0) + 1;
-                                      return acc;
-                                    }, {} as Record<string, number>);
+                                    // FIX: If entries are empty (mobile view), fallback to event.userCounts
+                                    // NOTE: event.userCounts is global for the event. If multiple companies exist, 
+                                    // we can't perfectly separate them without entries. However, showing global stats 
+                                    // is better than showing nothing for single-company events (majority).
+                                    const companyUserStats = companyEntries.length > 0
+                                      ? companyEntries.reduce((acc, entry) => {
+                                        const user = entry.recordedBy || 'Bilinmiyor';
+                                        acc[user] = (acc[user] || 0) + 1;
+                                        return acc;
+                                      }, {} as Record<string, number>)
+                                      : (event.userCounts || {});
 
                                     return (
                                       <div key={cIdx} className={`p-2.5 rounded-lg border ${companyReached
@@ -877,14 +883,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                         </div>
                                         <div className="flex items-center gap-1.5 text-[10px] text-gray-500 dark:text-gray-400 mb-1">
                                           <span className={`font-bold ${companyReached ? 'text-green-600 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}`}>
-                                            {companyCount} / {company.count}
+                                            {companyCount > 0 ? companyCount : (event.companies?.length === 1 ? realCount : companyCount)} / {company.count}
                                           </span>
-                                          <span>(%{companyPct})</span>
+                                          <span>(%{Math.min(100, Math.round(((companyCount > 0 ? companyCount : (event.companies?.length === 1 ? realCount : companyCount)) / company.count) * 100))})</span>
                                         </div>
                                         <div className="w-full bg-gray-200 dark:bg-gray-700 h-1 rounded-full overflow-hidden mb-1.5">
                                           <div
                                             className={`h-full transition-all duration-500 rounded-full ${companyReached ? 'bg-green-500' : 'bg-blue-500'}`}
-                                            style={{ width: `${companyPct}%` }}
+                                            style={{ width: `${Math.min(100, Math.round(((companyCount > 0 ? companyCount : (event.companies?.length === 1 ? realCount : companyCount)) / company.count) * 100))}%` }}
                                           ></div>
                                         </div>
                                         {Object.keys(companyUserStats).length > 0 && (
