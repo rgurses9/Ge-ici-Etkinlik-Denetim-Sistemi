@@ -558,7 +558,13 @@ const App: React.FC = () => {
       setEvents(prev => prev.map(e => e.id === entry.eventId ? { ...e, currentCount: e.currentCount + 1 } : e));
 
       // 2. Write to Firestore in background (only writes, no reads triggered)
-      await setDoc(doc(db, 'scanned_entries', uniqueId), entryWithUniqueId);
+      // FIX: Remove undefined fields to prevent Firestore error
+      const cleanEntry: any = { ...entryWithUniqueId };
+      if (cleanEntry.companyName === undefined) {
+        delete cleanEntry.companyName;
+      }
+
+      await setDoc(doc(db, 'scanned_entries', uniqueId), cleanEntry);
       const userKey = entry.recordedBy || 'Bilinmiyor';
       await updateDoc(doc(db, 'events', entry.eventId), {
         currentCount: increment(1),
