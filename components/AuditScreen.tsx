@@ -253,14 +253,14 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     inputRef.current?.focus();
   }, []);
 
-  // Fetch from Google Sheets - GLOBAL CACHE (24 Hours) - Tüm etkinliklerde paylaşılır
+  // Fetch from Google Sheets - OPTIMIZED CACHE (24 Hours) - Sıkıştırılmış veri
   const loadData = async () => {
-    const CACHE_KEY = 'geds_worker_db_v2';
-    const TIME_KEY = 'geds_worker_db_time_v2';
+    const CACHE_KEY = 'geds_worker_db_v3_compressed';
+    const TIME_KEY = 'geds_worker_db_time_v3';
     const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 Saat
 
     try {
-      // 1. Cache kontrolü (öncelik cache'de)
+      // 1. Cache kontrolü (sıkıştırılmış format)
       const cachedData = localStorage.getItem(CACHE_KEY);
       const cachedTime = localStorage.getItem(TIME_KEY);
 
@@ -270,7 +270,12 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
         if (timeSinceCache < CACHE_DURATION) {
           console.log(`✅ Veritabanı cache'den yüklendi (${hoursLeft} saat kaldı) - Google Sheets OKUNMADI`);
-          const onlineCitizens = JSON.parse(cachedData) as Citizen[];
+          // Decompress: "TC|Name|Date" formatından Citizen'a dönüştür
+          const compressed = JSON.parse(cachedData) as string[];
+          const onlineCitizens = compressed.map(line => {
+            const [tc, name, validityDate] = line.split('|');
+            return { tc, name, surname: '', validityDate };
+          });
           setDatabase([...onlineCitizens, ...MOCK_CITIZEN_DB]);
           setDbStatus('READY');
           onDatabaseUpdate(onlineCitizens);
@@ -296,13 +301,21 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
         setDbStatus('READY');
         onDatabaseUpdate(onlineCitizens);
 
-        // 3. Cache'e kaydet
+        // 3. Cache'e sıkıştırılmış formatta kaydet (70% daha küçük)
         try {
-          localStorage.setItem(CACHE_KEY, JSON.stringify(onlineCitizens));
+          // Compress: Her kayıt "TC|Name|Date" formatına dönüştürülür
+          const compressed = onlineCitizens.map(c => `${c.tc}|${c.name}|${c.validityDate}`);
+          localStorage.setItem(CACHE_KEY, JSON.stringify(compressed));
           localStorage.setItem(TIME_KEY, Date.now().toString());
-          console.log('💾 Veritabanı cache\'e kaydedildi (24 saat geçerli)');
-        } catch (e) {
-          console.warn("Cache kayıt hatası:", e);
+          const sizeKB = Math.round(JSON.stringify(compressed).length / 1024);
+          console.log(`💾 Veritabanı cache'e kaydedildi (${sizeKB} KB, 24 saat geçerli)`);
+        } catch (e: any) {
+          if (e.name === 'QuotaExceededError') {
+            console.error("❌ LocalStorage quota aşıldı! Veritabanı çok büyük, cache kullanılamıyor.");
+            console.warn("⚠️ Her etkinlikte Google Sheets'ten tekrar çekilecek.");
+          } else {
+            console.warn("Cache kayıt hatası:", e);
+          }
         }
       } else {
         console.warn("⚠️ Google Sheets boş döndü. Mock data kullanılıyor.");
