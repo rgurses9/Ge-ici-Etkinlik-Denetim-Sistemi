@@ -911,15 +911,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                               {/* User Scan Counts (for non-company events) */}
                               {(!event.companies || event.companies.length === 0) && (() => {
-                                const userStats = entries.length > 0
-                                  ? entries.reduce((acc, entry) => {
+                                // FIX: Prioritize event.userCounts because 'entries' might be partial (incomplete) in dashboard view.
+                                // Only calculate from entries if userCounts is missing.
+                                const hasUserCounts = event.userCounts && Object.keys(event.userCounts).length > 0;
+
+                                const userStats = hasUserCounts
+                                  ? event.userCounts
+                                  : entries.reduce((acc, entry) => {
                                     const user = entry.recordedBy || 'Bilinmiyor';
                                     acc[user] = (acc[user] || 0) + 1;
                                     return acc;
-                                  }, {} as Record<string, number>)
-                                  : (event.userCounts || {});
+                                  }, {} as Record<string, number>);
 
-                                if (Object.keys(userStats).length === 0) return null;
+                                if (!userStats || Object.keys(userStats).length === 0) return null;
 
                                 return (
                                   <div className="flex flex-wrap gap-1.5 mt-1">
