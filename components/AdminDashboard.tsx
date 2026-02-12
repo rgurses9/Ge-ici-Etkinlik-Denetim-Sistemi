@@ -101,20 +101,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const isAdmin = currentUser.roles.includes(UserRole.ADMIN);
 
-  // Auto-sync Continuing Events (Once per session per event)
-  const [syncedEvents, setSyncedEvents] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    const activeEvents = events.filter(e => e.status === 'ACTIVE');
-    activeEvents.forEach(e => {
-      if (!syncedEvents.has(e.id)) {
-        console.log(`Auto-syncing event: ${e.name}`);
-        onSyncEvent(e.id, true);
-        setSyncedEvents(prev => new Set(prev).add(e.id));
-      }
-    });
-  }, [events]); // Check whenever events list updates (e.g. initial load)
-
   // --- Handlers ---
 
   const toggleNewUserRole = (role: UserRole) => {
