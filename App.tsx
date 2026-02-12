@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useUsers, useAddUser, useUpdateUser, useDeleteUser, usePassiveEvents } from './hooks/useFirestoreQueries';
 import Login from './components/Login';
 import AdminDashboard from './components/AdminDashboard';
 import AuditScreen from './components/AuditScreen';
@@ -39,7 +41,7 @@ const getDocsCacheFirst = async (q: any) => {
 };
 
 const App: React.FC = () => {
-  // --- Global State ---
+  // --- Global State (önce tanımlanmalı) ---
   const [session, setSession] = useState<SessionState>(() => {
     // Check localStorage for existing session
     const savedSession = localStorage.getItem('geds_session');
@@ -56,9 +58,20 @@ const App: React.FC = () => {
     };
   });
 
+  // --- TanStack Query ---
+  const queryClient = useQueryClient();
+
+  // Users - TanStack Query ile yönetiliyor (24 saat cache)
+  const { data: users = [], isLoading: isUsersLoading, refetch: refetchUsers } = useUsers();
+  const addUserMutation = useAddUser();
+  const updateUserMutation = useUpdateUser();
+  const deleteUserMutation = useDeleteUser();
+
+  // Passive Events - TanStack Query ile yönetiliyor (2 saat cache)
+  // Sadece authenticated kullanıcılar için aktif
+  const { data: passiveEvents = [] } = usePassiveEvents(!!session.isAuthenticated);
+
   const [events, setEvents] = useState<Event[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [isUsersLoading, setIsUsersLoading] = useState(true);
   const [scannedEntries, setScannedEntries] = useState<Record<string, ScanEntry[]>>({});
 
   // Ref to access latest events without triggering re-renders in effects
@@ -118,77 +131,20 @@ const App: React.FC = () => {
 
   // --- Firestore Subscriptions ---
 
-  // Refresh users function (for login troubleshooting)
+  // Refresh users function (TanStack Query ile)
   const loadUsersFromFirebase = async (forceRefresh = false) => {
     console.log('🔄 Refreshing users from Firebase (force)...');
-    setIsUsersLoading(true);
     try {
-      const q = query(collection(db, 'users'), orderBy('username', 'asc'));
-      // Force refresh: sunucudan çek
-      const snapshot = await getDocs(q);
-      const fetchedUsers: User[] = snapshot.docs.map(doc => doc.data() as User);
-
-      if (fetchedUsers.length === 0) {
-        console.log("🌱 Seeding initial users...");
-        for (const user of INITIAL_USERS) {
-          await setDoc(doc(db, 'users', user.id), user);
-        }
-        setUsers(INITIAL_USERS);
-      } else {
-        setUsers(fetchedUsers);
-        localStorage.setItem('geds_users_cache', JSON.stringify(fetchedUsers));
-        localStorage.setItem('geds_users_fetch_ts', Date.now().toString());
-        console.log(`✅ Users refreshed: ${fetchedUsers.length}`);
-      }
+      await refetchUsers();
+      console.log(`✅ Users refreshed`);
     } catch (error: any) {
       console.error("❌ Error refreshing users:", error);
       throw error;
-    } finally {
-      setIsUsersLoading(false);
     }
   };
 
-  // 1. Users Loading (Cache-First with 24-hour TTL)
-  useEffect(() => {
-    const USERS_TTL = 24 * 60 * 60 * 1000; // 24 saat
-    const loadUsers = async () => {
-      const cachedUsers = localStorage.getItem('geds_users_cache');
-
-      // TTL kontrolü: Son 24 saat içinde çekildiyse Firestore'a gitme
-      const lastFetch = localStorage.getItem('geds_users_fetch_ts');
-      if (lastFetch && cachedUsers && (Date.now() - Number(lastFetch)) < USERS_TTL) {
-        console.log('👤 Users cache taze (24 saat dolmadı), Firestore sorgusu atlandı.');
-        setUsers(JSON.parse(cachedUsers));
-        setIsUsersLoading(false);
-        return;
-      }
-
-      // Cache varsa hemen göster (TTL dolmuş olsa bile UI'ı bloklamaz)
-      if (cachedUsers) {
-        setUsers(JSON.parse(cachedUsers));
-        setIsUsersLoading(false);
-      }
-
-      try {
-        const q = query(collection(db, 'users'));
-        const snapshot = await getDocsCacheFirst(q);
-        const fetchedUsers: User[] = snapshot.docs.map(doc => doc.data() as User);
-
-        if (fetchedUsers.length > 0) {
-          setUsers(fetchedUsers);
-          localStorage.setItem('geds_users_cache', JSON.stringify(fetchedUsers));
-          localStorage.setItem('geds_users_fetch_ts', Date.now().toString());
-        }
-      } catch (e) {
-        console.warn("Users fetch from server failed, relying on cache.", e);
-      } finally {
-        setIsUsersLoading(false);
-      }
-    };
-    loadUsers();
-  }, []);
-
   // 2. Events Loading — Real-time listener SADECE ACTIVE events için
+  // Passive events TanStack Query ile yönetiliyor
   useEffect(() => {
     if (!session.isAuthenticated) return;
 
@@ -200,7 +156,7 @@ const App: React.FC = () => {
       } catch (e) { /* silent */ }
     }
 
-    // Real-time listener: SADECE ACTIVE events (pasifler cache'den)
+    // Real-time listener: SADECE ACTIVE events
     console.log('📡 Events real-time listener başlatılıyor (sadece ACTIVE)...');
     const q = query(
       collection(db, 'events'),
@@ -211,24 +167,7 @@ const App: React.FC = () => {
     const unsubscribe = onSnapshot(q, async (snapshot) => {
       const activeEvents: Event[] = snapshot.docs.map(doc => doc.data() as Event);
 
-      // Passive events'i cache'den al veya ilk kez çek
-      let passiveEvents: Event[] = [];
-      const passiveCache = localStorage.getItem('geds_passive_events_cache');
-
-      if (passiveCache) {
-        passiveEvents = JSON.parse(passiveCache);
-      } else {
-        // İlk kez passive events'i çek ve cache'le
-        const pq = query(
-          collection(db, 'events'),
-          where('status', '==', 'PASSIVE'),
-          orderBy('startDate', 'asc')
-        );
-        const pSnapshot = await getDocs(pq);
-        passiveEvents = pSnapshot.docs.map(doc => doc.data() as Event);
-        localStorage.setItem('geds_passive_events_cache', JSON.stringify(passiveEvents));
-      }
-
+      // Passive events'i TanStack Query'den al
       const allEvents = [...activeEvents, ...passiveEvents].sort((a, b) =>
         new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
       );
@@ -244,7 +183,7 @@ const App: React.FC = () => {
       console.log('🔌 Events listener kapatıldı.');
       unsubscribe();
     };
-  }, [session.isAuthenticated]);
+  }, [session.isAuthenticated, passiveEvents]);
 
   // Auto-sync events to cache (ensures optimistic updates persist across page refreshes)
   useEffect(() => {
@@ -795,27 +734,16 @@ const App: React.FC = () => {
   };
 
   const handleAddUser = async (user: User) => {
-    // Optimistic Update (no need to re-read users collection)
-    setUsers(prev => [...prev, user]);
     try {
-      await setDoc(doc(db, 'users', user.id), user);
-      // Update cache
-      localStorage.setItem('geds_users_cache', JSON.stringify([...users, user]));
+      await addUserMutation.mutateAsync(user);
     } catch (e) {
       console.error("Error adding user: ", e);
-      // Rollback
-      setUsers(prev => prev.filter(u => u.id !== user.id));
     }
-  }
+  };
 
   const handleUpdateUser = async (updatedUser: User) => {
-    // Optimistic Update
-    setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
     try {
-      await setDoc(doc(db, 'users', updatedUser.id), updatedUser);
-      // Update cache
-      const updatedUsers = users.map(u => u.id === updatedUser.id ? updatedUser : u);
-      localStorage.setItem('geds_users_cache', JSON.stringify(updatedUsers));
+      await updateUserMutation.mutateAsync(updatedUser);
     } catch (e) {
       console.error("Error updating user: ", e);
     }
@@ -826,17 +754,10 @@ const App: React.FC = () => {
       alert("Kendinizi silemezsiniz!");
       return;
     }
-    // Optimistic Update
-    const previousUsers = users;
-    setUsers(prev => prev.filter(u => u.id !== userId));
     try {
-      await deleteDoc(doc(db, 'users', userId));
-      // Update cache
-      localStorage.setItem('geds_users_cache', JSON.stringify(users.filter(u => u.id !== userId)));
+      await deleteUserMutation.mutateAsync(userId);
     } catch (e) {
       console.error("Error deleting user: ", e);
-      // Rollback
-      setUsers(previousUsers);
     }
   };
 

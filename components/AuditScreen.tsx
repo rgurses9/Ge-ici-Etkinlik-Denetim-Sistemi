@@ -898,11 +898,6 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
       </div>
 
-      {/* Floating Chat Icon */}
-      <button className="fixed bottom-4 right-4 bg-white dark:bg-gray-800 p-2.5 rounded-full shadow-lg border border-gray-100 dark:border-gray-700 text-primary-600 dark:text-primary-400 hover:bg-gray-50 dark:hover:bg-gray-700">
-        <MessageSquare size={20} />
-      </button>
-
     </div>
   );
 };
