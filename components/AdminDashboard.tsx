@@ -875,26 +875,37 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     const companyReached = companyCount >= company.count;
 
                                     // Per-user stats for this company
-                                    // FIX: Prioritize entries -> specific companyUserCounts -> global (only if single company)
+                                    // FIX: Merge local entries and Firestore counters to ensure consistency
+                                    const prefix = `${safeKey}__`;
                                     let companyUserStats: Record<string, number> = {};
 
+                                    // 1. Start with Firestore breakdown (Summary source)
+                                    if (event.companyUserCounts) {
+                                      Object.entries(event.companyUserCounts)
+                                        .filter(([k]) => k.startsWith(prefix))
+                                        .forEach(([k, v]) => {
+                                          const user = k.substring(prefix.length);
+                                          companyUserStats[user] = v;
+                                        });
+                                    }
+
+                                    // 2. Merge with local entries (incase list has more/fresher data than counter)
                                     if (companyEntries.length > 0) {
-                                      companyUserStats = companyEntries.reduce((acc, entry) => {
+                                      const localBreakdown = companyEntries.reduce((acc, entry) => {
                                         const user = entry.recordedBy || 'Bilinmiyor';
                                         acc[user] = (acc[user] || 0) + 1;
                                         return acc;
                                       }, {} as Record<string, number>);
-                                    } else if (event.companyUserCounts) {
-                                      const safeKey = company.name.replace(/\./g, '_');
-                                      const prefix = `${safeKey}__`;
-                                      companyUserStats = Object.entries(event.companyUserCounts)
-                                        .filter(([k]) => k.startsWith(prefix))
-                                        .reduce((acc, [k, v]) => {
-                                          acc[k.substring(prefix.length)] = v;
-                                          return acc;
-                                        }, {} as Record<string, number>);
-                                    } else if (event.companies?.length === 1) {
-                                      // Fallback to global stats ONLY if single company (safe assumption)
+
+                                      Object.entries(localBreakdown).forEach(([user, count]) => {
+                                        // Sanitize user key to match prefix-stripped format used in step 1 if it has dots
+                                        const key = user.replace(/\./g, '_');
+                                        companyUserStats[key] = Math.max(companyUserStats[key] || 0, count);
+                                      });
+                                    }
+
+                                    // 3. Fallback to global stats (legacy or single-company events)
+                                    if (Object.keys(companyUserStats).length === 0 && event.companies?.length === 1) {
                                       companyUserStats = event.userCounts || {};
                                     }
 
