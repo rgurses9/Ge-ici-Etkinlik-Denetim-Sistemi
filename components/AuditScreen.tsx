@@ -253,32 +253,38 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     inputRef.current?.focus();
   }, []);
 
-  // Fetch from Google Sheets - SMART CACHE (2 Hours)
+  // Fetch from Google Sheets - GLOBAL CACHE (24 Hours) - Tüm etkinliklerde paylaşılır
   const loadData = async () => {
     const CACHE_KEY = 'geds_worker_db_v2';
     const TIME_KEY = 'geds_worker_db_time_v2';
-    const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 Hours
+    const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 Saat
 
     try {
-      // Check Cache First
+      // 1. Cache kontrolü (öncelik cache'de)
       const cachedData = localStorage.getItem(CACHE_KEY);
       const cachedTime = localStorage.getItem(TIME_KEY);
-      if (cachedData && cachedTime && (Date.now() - parseInt(cachedTime) < CACHE_DURATION)) {
-        console.log('📦 Using local cache for worker list');
-        const onlineCitizens = JSON.parse(cachedData) as Citizen[];
-        setDatabase([...onlineCitizens, ...MOCK_CITIZEN_DB]);
-        setDbStatus('READY');
-        onDatabaseUpdate(onlineCitizens);
-        return;
+
+      if (cachedData && cachedTime) {
+        const timeSinceCache = Date.now() - parseInt(cachedTime);
+        const hoursLeft = Math.round((CACHE_DURATION - timeSinceCache) / (60 * 60 * 1000) * 10) / 10;
+
+        if (timeSinceCache < CACHE_DURATION) {
+          console.log(`✅ Veritabanı cache'den yüklendi (${hoursLeft} saat kaldı) - Google Sheets OKUNMADI`);
+          const onlineCitizens = JSON.parse(cachedData) as Citizen[];
+          setDatabase([...onlineCitizens, ...MOCK_CITIZEN_DB]);
+          setDbStatus('READY');
+          onDatabaseUpdate(onlineCitizens);
+          return; // ← ERKEN DÖNDÜ, GOOGLE SHEETS'E İSTEK GÖNDERİLMEDİ
+        }
       }
 
-      console.log('🌐 Cache expired or missing. Fetching fresh database from Google Sheets...');
+      // 2. Cache yoksa veya süresi dolmuşsa Google Sheets'ten çek
+      console.log('⚠️ Cache süresi doldu veya yok. Google Sheets\'ten veri çekiliyor...');
       setDbStatus('LOADING');
       const workerRecords = await fetchSheetData();
-      console.log(`Fetched ${workerRecords.length} worker records from Google Sheets`);
+      console.log(`📥 Google Sheets'ten ${workerRecords.length} kayıt alındı`);
 
       if (workerRecords.length > 0) {
-        console.log('Sample Record from Sheet:', workerRecords[0]);
         const onlineCitizens = workerRecords.map(r => ({
           tc: r.tc,
           name: r.fullName,
@@ -290,20 +296,21 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
         setDbStatus('READY');
         onDatabaseUpdate(onlineCitizens);
 
-        // Save to cache
+        // 3. Cache'e kaydet
         try {
           localStorage.setItem(CACHE_KEY, JSON.stringify(onlineCitizens));
           localStorage.setItem(TIME_KEY, Date.now().toString());
+          console.log('💾 Veritabanı cache\'e kaydedildi (24 saat geçerli)');
         } catch (e) {
-          console.warn("Worker cache error:", e);
+          console.warn("Cache kayıt hatası:", e);
         }
       } else {
-        console.warn("Worker fetch returned empty. Using local mock data.");
+        console.warn("⚠️ Google Sheets boş döndü. Mock data kullanılıyor.");
         setDatabase(MOCK_CITIZEN_DB);
         setDbStatus('ERROR');
       }
     } catch (e) {
-      console.error("DB Load error", e);
+      console.error("❌ Veritabanı yükleme hatası:", e);
       setDatabase(MOCK_CITIZEN_DB);
       setDbStatus('ERROR');
     }
@@ -311,7 +318,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, []); // ← Boş dependency array: Sadece component mount'ta 1 kez çalışır
 
 
 
