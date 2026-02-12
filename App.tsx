@@ -7,7 +7,7 @@ import { INITIAL_USERS, INITIAL_EVENTS } from './constants';
 import { db } from './firebase';
 import {
   collection,
-  // onSnapshot removed — no more real-time listeners to save reads
+  onSnapshot,
   doc,
   setDoc,
   updateDoc,
@@ -187,44 +187,35 @@ const App: React.FC = () => {
     loadUsers();
   }, []);
 
-  // 2. Events Loading (Cache-First with 12-hour TTL)
+  // 2. Events Loading — Real-time listener ile tüm cihazlarda güncel kalır
   useEffect(() => {
     if (!session.isAuthenticated) return;
-    const EVENTS_TTL = 12 * 60 * 60 * 1000; // 12 saat
 
-    const loadEventsOnce = async () => {
+    // Cache'den anında göster (UI bloklanmasın)
+    const cachedEvents = localStorage.getItem('geds_events_cache');
+    if (cachedEvents) {
       try {
-        // Cache'den yükle (anında UI)
-        const cachedEvents = localStorage.getItem('geds_events_cache');
+        setEvents(JSON.parse(cachedEvents));
+      } catch (e) { /* silent */ }
+    }
 
-        // TTL kontrolü: Son 12 saat içinde çekildiyse Firestore'a gitme
-        const lastFetch = localStorage.getItem('geds_events_fetch_ts');
-        if (lastFetch && cachedEvents && (Date.now() - Number(lastFetch)) < EVENTS_TTL) {
-          console.log('📋 Events cache taze (12 saat dolmadı), Firestore sorgusu atlandı.');
-          setEvents(JSON.parse(cachedEvents));
-          return;
-        }
+    // Real-time listener: currentCount, status vb. değişiklikler anında yansır
+    console.log('📡 Events real-time listener başlatılıyor...');
+    const q = query(collection(db, 'events'), orderBy('startDate', 'asc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedEvents: Event[] = snapshot.docs.map(doc => doc.data() as Event);
+      setEvents(fetchedEvents);
+      localStorage.setItem('geds_events_cache', JSON.stringify(fetchedEvents));
+      localStorage.setItem('geds_events_fetch_ts', Date.now().toString());
+      console.log(`✅ Events güncellendi (real-time): ${fetchedEvents.length}`);
+    }, (error) => {
+      console.error('Events listener error:', error);
+    });
 
-        // Cache varsa hemen göster (TTL dolmuş olsa bile UI'ı bloklamaz)
-        if (cachedEvents) {
-          setEvents(JSON.parse(cachedEvents));
-        }
-
-        console.log('📡 Fetching events (cache-first)...');
-        const q = query(collection(db, 'events'), orderBy('startDate', 'asc'));
-        const snapshot = await getDocsCacheFirst(q);
-        const fetchedEvents: Event[] = snapshot.docs.map(doc => doc.data() as Event);
-
-        setEvents(fetchedEvents);
-        localStorage.setItem('geds_events_cache', JSON.stringify(fetchedEvents));
-        localStorage.setItem('geds_events_fetch_ts', Date.now().toString());
-        console.log(`✅ Events loaded: ${fetchedEvents.length}`);
-      } catch (error) {
-        console.error("Events fetch error", error);
-      }
+    return () => {
+      console.log('🔌 Events listener kapatıldı.');
+      unsubscribe();
     };
-
-    loadEventsOnce();
   }, [session.isAuthenticated]);
 
   // Auto-sync events to cache (ensures optimistic updates persist across page refreshes)
@@ -533,12 +524,20 @@ const App: React.FC = () => {
   const handleFinishAndCloseAudit = async (duration: string) => {
     if (activeEventId) {
       try {
+        // 1. Optimistic lokal güncelleme — Dashboard'da anında PASSIVE olarak görünsün
+        setEvents(prev => prev.map(e => e.id === activeEventId
+          ? { ...e, status: 'PASSIVE' as const, completionDuration: duration }
+          : e
+        ));
+
+        // 2. Firestore güncelle
         const eventRef = doc(db, 'events', activeEventId);
         await updateDoc(eventRef, {
           status: 'PASSIVE',
           completionDuration: duration
         });
         setActiveEventId(null);
+        setActiveCompanyName(null);
       } catch (e) {
         console.error("Error finishing audit: ", e);
       }
