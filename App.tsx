@@ -840,8 +840,8 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSyncEventData = async (eventId: string) => {
-    if (!confirm('Senkronizasyon işlemi veritabanındaki tüm kayıtları tarayacaktır. Devam etmek istiyor musunuz?')) return;
+  const handleSyncEventData = async (eventId: string, silent: boolean = false) => {
+    if (!silent && !confirm('Senkronizasyon işlemi veritabanındaki tüm kayıtları tarayacaktır. Devam etmek istiyor musunuz?')) return;
     try {
       // 1. Fetch all entries for this event
       const q = query(collection(db, 'scanned_entries'), where('eventId', '==', eventId));
@@ -871,10 +871,10 @@ const App: React.FC = () => {
 
       // 3. Update Event Doc
       await updateDoc(doc(db, 'events', eventId), stats);
-      alert('Senkronizasyon başarıyla tamamlandı.');
+      if (!silent) alert('Senkronizasyon başarıyla tamamlandı.');
     } catch (e) {
       console.error(e);
-      alert('Hata oluştu.');
+      if (!silent) alert('Hata oluştu.');
     }
   };
 

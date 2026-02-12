@@ -20,7 +20,7 @@ interface AdminDashboardProps {
   onDeleteUser: (userId: string) => Promise<void>;
   onUpdateEvent: (event: Event) => void;
   onRefreshPassiveData: (eventIds: string[]) => Promise<void>;
-  onSyncEvent: (eventId: string) => Promise<void>;
+  onSyncEvent: (eventId: string, silent?: boolean) => Promise<void>;
   isDarkMode: boolean;
   onToggleTheme: () => void;
 }
@@ -100,6 +100,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [newUserRoles, setNewUserRoles] = useState<UserRole[]>([UserRole.PERSONNEL]);
 
   const isAdmin = currentUser.roles.includes(UserRole.ADMIN);
+
+  // Auto-sync Continuing Events (Once per session per event)
+  const [syncedEvents, setSyncedEvents] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const activeEvents = events.filter(e => e.status === 'ACTIVE');
+    activeEvents.forEach(e => {
+      if (!syncedEvents.has(e.id)) {
+        console.log(`Auto-syncing event: ${e.name}`);
+        onSyncEvent(e.id, true);
+        setSyncedEvents(prev => new Set(prev).add(e.id));
+      }
+    });
+  }, [events]); // Check whenever events list updates (e.g. initial load)
 
   // --- Handlers ---
 
@@ -988,13 +1002,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   >
                                     <Edit size={16} />
                                   </button>
-                                  <button
-                                    onClick={() => onSyncEvent(event.id)}
-                                    className="p-1.5 text-orange-500 hover:text-orange-600 dark:text-orange-400 dark:hover:text-orange-300 bg-orange-50 dark:bg-orange-900/30 hover:bg-orange-100 dark:hover:bg-orange-900/50 rounded-lg transition-all"
-                                    title="Verileri Senkronize Et (Hata Düzeltme)"
-                                  >
-                                    <RefreshCw size={16} />
-                                  </button>
+
                                   <button
                                     onClick={() => onDeleteEvent(event.id)}
                                     className="p-1.5 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-lg transition-all"
