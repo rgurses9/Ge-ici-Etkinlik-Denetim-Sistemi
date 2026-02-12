@@ -676,8 +676,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                 return (
                   <div key={event.id} className={`bg-white dark:bg-[#0f172a] border ${isLate ? 'border-red-500/20' : 'border-gray-200 dark:border-gray-800/80'} p-2.5 rounded-xl shadow-sm hover:shadow-md transition-all`}>
-                    <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-                      <div className="flex-1 space-y-2">
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="flex-1 min-w-0 space-y-2">
                         {isLate && realCount === 0 && (
                           <div className="flex items-center gap-1.5 text-red-600 dark:text-red-400 text-[10px] font-bold animate-pulse">
                             <AlertTriangle size={12} />
@@ -747,7 +747,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0 sm:self-start mt-0.5">
+                      <div className="flex items-center gap-1.5 shrink-0">
                         <button
                           onClick={() => handleStartAuditClick(event.id)}
                           className="p-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-all active:scale-95 flex items-center justify-center group/play"
@@ -812,8 +812,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                       return (
                         <div key={event.id} className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800/80 p-4 rounded-xl shadow-sm hover:shadow-md transition-all">
-                          <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-                            <div className="flex-1 space-y-2 w-full">
+                          <div className="flex justify-between items-start gap-2">
+                            <div className="flex-1 min-w-0 space-y-2 w-full">
                               <div className="flex items-center gap-2">
                                 <h4 className="font-bold text-gray-900 dark:text-white text-xs">
                                   {event.name}
@@ -960,7 +960,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                             </div>
 
-                            <div className="flex items-center gap-2 shrink-0 sm:self-start mt-0.5">
+                            <div className="flex items-center gap-1.5 shrink-0">
                               <button
                                 onClick={() => handleStartAuditClick(event.id)}
                                 className="p-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-all active:scale-95 flex items-center justify-center"
