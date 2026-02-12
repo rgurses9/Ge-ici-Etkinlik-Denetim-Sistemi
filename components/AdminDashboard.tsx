@@ -856,18 +856,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     const companyPct = Math.min(100, Math.round((companyCount / company.count) * 100));
                                     const companyReached = companyCount >= company.count;
 
-                                    // Per-user stats for this company (requires entries)
-                                    // FIX: If entries are empty (mobile view), fallback to event.userCounts
-                                    // NOTE: event.userCounts is global for the event. If multiple companies exist, 
-                                    // we can't perfectly separate them without entries. However, showing global stats 
-                                    // is better than showing nothing for single-company events (majority).
-                                    const companyUserStats = companyEntries.length > 0
-                                      ? companyEntries.reduce((acc, entry) => {
+                                    // Per-user stats for this company
+                                    // FIX: Prioritize entries -> specific companyUserCounts -> global (only if single company)
+                                    let companyUserStats: Record<string, number> = {};
+
+                                    if (companyEntries.length > 0) {
+                                      companyUserStats = companyEntries.reduce((acc, entry) => {
                                         const user = entry.recordedBy || 'Bilinmiyor';
                                         acc[user] = (acc[user] || 0) + 1;
                                         return acc;
-                                      }, {} as Record<string, number>)
-                                      : (event.userCounts || {});
+                                      }, {} as Record<string, number>);
+                                    } else if (event.companyUserCounts) {
+                                      const safeKey = company.name.replace(/\./g, '_');
+                                      const prefix = `${safeKey}__`;
+                                      companyUserStats = Object.entries(event.companyUserCounts)
+                                        .filter(([k]) => k.startsWith(prefix))
+                                        .reduce((acc, [k, v]) => {
+                                          acc[k.substring(prefix.length)] = v;
+                                          return acc;
+                                        }, {} as Record<string, number>);
+                                    } else if (event.companies?.length === 1) {
+                                      // Fallback to global stats ONLY if single company (safe assumption)
+                                      companyUserStats = event.userCounts || {};
+                                    }
 
                                     return (
                                       <div key={cIdx} className={`p-2.5 rounded-lg border ${companyReached

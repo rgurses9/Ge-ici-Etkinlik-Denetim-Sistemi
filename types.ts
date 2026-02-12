@@ -24,6 +24,7 @@ export interface Event {
   companies?: CompanyTarget[];
   userCounts?: Record<string, number>; // Added for efficient dashboard display without fetching all scans
   companyCounts?: Record<string, number>; // Added for efficient multi-company dashboard display
+  companyUserCounts?: Record<string, number>; // Added for company-specific user stats (Format: Company_User)
 }
 
 export interface CompanyTarget {

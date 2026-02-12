@@ -604,7 +604,9 @@ const App: React.FC = () => {
       // Add company count update if available
       if (entry.companyName) {
         const safeComp = entry.companyName.replace(/\./g, '_');
+        const safeUser = userKey.replace(/\./g, '_');
         updates[`companyCounts.${safeComp}`] = increment(1);
+        updates[`companyUserCounts.${safeComp}__${safeUser}`] = increment(1);
       }
 
       await updateDoc(doc(db, 'events', entry.eventId), updates);
@@ -638,6 +640,7 @@ const App: React.FC = () => {
 
         const batchUserStats: Record<string, number> = {};
         const batchCompanyStats: Record<string, number> = {};
+        const batchCompanyUserStats: Record<string, number> = {};
 
         newEntries.forEach(e => {
           const user = e.recordedBy || 'Bilinmiyor';
@@ -645,7 +648,9 @@ const App: React.FC = () => {
 
           if (e.companyName) {
             const safeName = e.companyName.replace(/\./g, '_');
+            const safeUser = user.replace(/\./g, '_');
             batchCompanyStats[safeName] = (batchCompanyStats[safeName] || 0) + 1;
+            batchCompanyUserStats[`${safeName}__${safeUser}`] = (batchCompanyUserStats[`${safeName}__${safeUser}`] || 0) + 1;
           }
         });
 
@@ -657,6 +662,10 @@ const App: React.FC = () => {
 
         Object.entries(batchCompanyStats).forEach(([comp, count]) => {
           updates[`companyCounts.${comp}`] = increment(count);
+        });
+
+        Object.entries(batchCompanyUserStats).forEach(([key, count]) => {
+          updates[`companyUserCounts.${key}`] = increment(count);
         });
 
         batch.update(eventRef, updates);
@@ -691,7 +700,9 @@ const App: React.FC = () => {
 
       if (entry.companyName) {
         const safeComp = entry.companyName.replace(/\./g, '_');
+        const safeUser = userKey.replace(/\./g, '_');
         updates[`companyCounts.${safeComp}`] = increment(-1);
+        updates[`companyUserCounts.${safeComp}__${safeUser}`] = increment(-1);
       }
 
       await updateDoc(doc(db, 'events', activeEventId), updates);
