@@ -289,7 +289,7 @@ const App: React.FC = () => {
     scannedEntriesCacheLoaded.current = true;
   }, [session.isAuthenticated]);
 
-  // B. Scanned Entries (Load current event + overlapping events)
+  // B. Scanned Entries (Load current event + overlapping events) - REAL-TIME
   // CRITICAL: 'events' is NOT in the dependency array to avoid re-fetching on every scan.
   // We use eventsRef.current to access events without causing re-triggers.
   useEffect(() => {
@@ -299,17 +299,16 @@ const App: React.FC = () => {
       return;
     }
 
-    const loadScannedEntries = async () => {
+    if (!activeEventId) {
+      // DASHBOARD MODE: No listener needed
+      return;
+    }
+
+    // AUDIT MODE: Real-time listener
+    const setupListener = async () => {
       try {
-        if (!activeEventId) {
-          // DASHBOARD MODE: Cache was already loaded in effect A above.
-          return;
-        }
-
-        // AUDIT MODE: Cache-first with TTL check
-        const cachedEntriesStr = localStorage.getItem('geds_scanned_entries_cache');
-
         // 1. Cache'den anında göster
+        const cachedEntriesStr = localStorage.getItem('geds_scanned_entries_cache');
         if (cachedEntriesStr) {
           const cached = JSON.parse(cachedEntriesStr);
           if (cached[activeEventId]) {
@@ -317,17 +316,10 @@ const App: React.FC = () => {
           }
         }
 
-        // 2. TTL kontrolü: Bu etkinlik son 10 dakika içinde Firestore'dan çekildiyse tekrar çekme
-        const lastFetchTime = eventFetchTimestamps.current[activeEventId] || 0;
-        if ((Date.now() - lastFetchTime) < SCAN_CACHE_TTL) {
-          console.log(`⚡ Etkinlik ${activeEventId} verileri cache'de taze (10dk dolmadı), Firestore sorgusu atlandı.`);
-          return;
-        }
-
-        // 3. Firestore'dan çek (cache süresi dolmuş veya ilk kez)
+        // 2. Overlapping events'leri bul
         const currentEvents = eventsRef.current;
         const currentEvent = currentEvents.find(e => e.id === activeEventId);
-        if (!currentEvent) return;
+        if (!currentEvent) return () => { };
 
         const currentStart = new Date(currentEvent.startDate).getTime();
         const currentEnd = new Date(currentEvent.endDate).getTime();
@@ -341,9 +333,10 @@ const App: React.FC = () => {
           })
           .map(e => e.id);
 
-        console.log(`📡 Loading scans for ${overlappingEventIds.length} overlapping events (Firestore READ)`);
+        console.log(`📡 Setting up real-time listener for ${overlappingEventIds.length} overlapping events' scans...`);
 
-        const allEntries: Record<string, ScanEntry[]> = {};
+        // 3. Real-time listeners for all overlapping events
+        const unsubscribers: (() => void)[] = [];
 
         for (let i = 0; i < overlappingEventIds.length; i += 10) {
           const chunk = overlappingEventIds.slice(i, i + 10);
@@ -351,44 +344,58 @@ const App: React.FC = () => {
             collection(db, 'scanned_entries'),
             where('eventId', 'in', chunk)
           );
-          const snapshot = await getDocsCacheFirst(q);
-          snapshot.docs.forEach(d => {
-            const entry = d.data() as ScanEntry;
-            if (!allEntries[entry.eventId]) allEntries[entry.eventId] = [];
-            allEntries[entry.eventId].push(entry);
+
+          const unsubscribe = onSnapshot(q, (snapshot) => {
+            const allEntries: Record<string, ScanEntry[]> = {};
+
+            snapshot.docs.forEach(d => {
+              const entry = d.data() as ScanEntry;
+              if (!allEntries[entry.eventId]) allEntries[entry.eventId] = [];
+              allEntries[entry.eventId].push(entry);
+            });
+
+            // Sort entries by timestamp
+            Object.keys(allEntries).forEach(eventId => {
+              allEntries[eventId].sort((a, b) =>
+                (Number(b.serverTimestamp) || 0) - (Number(a.serverTimestamp) || 0)
+              );
+            });
+
+            setScannedEntries(prev => ({ ...prev, ...allEntries }));
+            console.log(`✅ Scanned entries updated (real-time): ${Object.values(allEntries).flat().length} scans`);
+
+            // Update cache
+            try {
+              const currentCacheStr = localStorage.getItem('geds_scanned_entries_cache');
+              let newCache = currentCacheStr ? JSON.parse(currentCacheStr) : {};
+              Object.assign(newCache, allEntries);
+              localStorage.setItem('geds_scanned_entries_cache', JSON.stringify(newCache));
+            } catch (e) {
+              console.warn("Cache update error", e);
+            }
+          }, (error) => {
+            console.error('Scanned entries listener error:', error);
           });
+
+          unsubscribers.push(unsubscribe);
         }
 
-        if (allEntries[activeEventId]) {
-          allEntries[activeEventId].sort((a, b) =>
-            (Number(b.serverTimestamp) || 0) - (Number(a.serverTimestamp) || 0)
-          );
-        }
-
-        setScannedEntries(allEntries);
-
-        // Fetch timestamp'lerini güncelle (tüm overlapping events için)
-        const now = Date.now();
-        overlappingEventIds.forEach(eid => {
-          eventFetchTimestamps.current[eid] = now;
-        });
-
-        // Cache güncelle
-        try {
-          const currentCacheStr = localStorage.getItem('geds_scanned_entries_cache');
-          let newCache = currentCacheStr ? JSON.parse(currentCacheStr) : {};
-          Object.assign(newCache, allEntries);
-          localStorage.setItem('geds_scanned_entries_cache', JSON.stringify(newCache));
-        } catch (e) {
-          console.warn("Cache update error", e);
-        }
+        // Cleanup function
+        return () => {
+          console.log('🔌 Scanned entries listeners closed.');
+          unsubscribers.forEach(unsub => unsub());
+        };
 
       } catch (e) {
-        console.error("Error loading scan entries", e);
+        console.error("Error setting up scan entries listener", e);
+        return () => { };
       }
     };
 
-    loadScannedEntries();
+    const cleanupPromise = setupListener();
+    return () => {
+      cleanupPromise.then(cleanup => cleanup && cleanup());
+    };
   }, [session.isAuthenticated, activeEventId]);
 
   // Auto-sync scanned entries to cache
