@@ -399,6 +399,54 @@ const App: React.FC = () => {
           unsubscribers.push(unsubscribe);
         }
 
+        const unsubscribe = onSnapshot(q, async (snapshot) => {
+          const activeEntries: ScanEntry[] = snapshot.docs.map(d => d.data() as ScanEntry);
+
+          // Overlapping events'i bir kez cache'den veya Firestore'dan al (conflict check için)
+          let overlappingEntries: Record<string, ScanEntry[]> = { [activeEventId]: activeEntries };
+
+          for (let i = 0; i < overlappingEventIds.length; i += 10) {
+            const chunk = overlappingEventIds.slice(i, i + 10).filter(id => id !== activeEventId);
+            if (chunk.length === 0) continue;
+
+            const oq = query(
+              collection(db, 'scanned_entries'),
+              where('eventId', 'in', chunk)
+            );
+
+            try {
+              const oSnapshot = await getDocsFromCache(oq);
+              oSnapshot.docs.forEach(d => {
+                const entry = d.data() as ScanEntry;
+                if (!overlappingEntries[entry.eventId]) overlappingEntries[entry.eventId] = [];
+                overlappingEntries[entry.eventId].push(entry);
+              });
+            } catch {
+              // Cache miss - fetch from server (one-time)
+              const oSnapshot = await getDocs(oq);
+              oSnapshot.docs.forEach(d => {
+                const entry = d.data() as ScanEntry;
+                if (!overlappingEntries[entry.eventId]) overlappingEntries[entry.eventId] = [];
+                overlappingEntries[entry.eventId].push(entry);
+              });
+            }
+          }
+
+          setScannedEntries(overlappingEntries);
+          console.log(`✅ Scanned entries updated (real-time): ${activeEntries.length} active scans`);
+
+          // Update cache
+          try {
+            const currentCacheStr = localStorage.getItem('geds_scanned_entries_cache');
+            let newCache = currentCacheStr ? JSON.parse(currentCacheStr) : {};
+            Object.assign(newCache, overlappingEntries);
+            localStorage.setItem('geds_scanned_entries_cache', JSON.stringify(newCache));
+          } catch (e) {
+            console.warn("Cache update error", e);
+          }
+        }, (error) => {
+          console.error('Scanned entries listener error:', error);
+        });
 
         // Cleanup
         return () => {
