@@ -772,7 +772,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <Edit size={16} />
                             </button>
                             <button
-                              onClick={() => onDeleteEvent(event.id)}
+                              onClick={() => {
+                                const count = event.currentCount || 0;
+                                const msg = count > 0
+                                  ? `"${event.name}" etkinliğinde ${count} kimlik okutulmuş. Etkinliği silmek istediğinize emin misiniz?`
+                                  : `"${event.name}" etkinliğini silmek istediğinize emin misiniz?`;
+                                if (confirm(msg)) onDeleteEvent(event.id);
+                              }}
                               className="p-1.5 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-lg transition-all"
                               title="Sil"
                             >
@@ -986,7 +992,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   </button>
 
                                   <button
-                                    onClick={() => onDeleteEvent(event.id)}
+                                    onClick={() => {
+                                      const count = event.currentCount || 0;
+                                      const msg = count > 0
+                                        ? `"${event.name}" etkinliğinde ${count} kimlik okutulmuş. Etkinliği silmek istediğinize emin misiniz?`
+                                        : `"${event.name}" etkinliğini silmek istediğinize emin misiniz?`;
+                                      if (confirm(msg)) onDeleteEvent(event.id);
+                                    }}
                                     className="p-1.5 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-lg transition-all"
                                     title="Sil"
                                   >
@@ -1153,9 +1165,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     {isAdmin && (
                                       <button
                                         onClick={() => {
-                                          if (confirm('Bu etkinliği silmek istediğinize emin misiniz?')) {
-                                            onDeleteEvent(event.id);
-                                          }
+                                          const count = event.currentCount || 0;
+                                          const msg = count > 0
+                                            ? `"${event.name}" etkinliğinde ${count} kimlik okutulmuş. Etkinliği silmek istediğinize emin misiniz?`
+                                            : `"${event.name}" etkinliğini silmek istediğinize emin misiniz?`;
+                                          if (confirm(msg)) onDeleteEvent(event.id);
                                         }}
                                         className="p-1.5 text-gray-400 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400 transition"
                                         title="Sil"
