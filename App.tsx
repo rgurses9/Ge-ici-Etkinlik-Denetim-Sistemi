@@ -592,11 +592,22 @@ const App: React.FC = () => {
       }
 
       await setDoc(doc(db, 'scanned_entries', uniqueId), cleanEntry);
+
       const userKey = entry.recordedBy || 'Bilinmiyor';
-      await updateDoc(doc(db, 'events', entry.eventId), {
+
+      // Prepare updates object
+      const updates: any = {
         currentCount: increment(1),
         [`userCounts.${userKey}`]: increment(1)
-      });
+      };
+
+      // Add company count update if available
+      if (entry.companyName) {
+        const safeComp = entry.companyName.replace(/\./g, '_');
+        updates[`companyCounts.${safeComp}`] = increment(1);
+      }
+
+      await updateDoc(doc(db, 'events', entry.eventId), updates);
     } catch (e) {
       console.error("Error adding scan: ", e);
     }
@@ -624,16 +635,30 @@ const App: React.FC = () => {
       const event = events.find(e => e.id === eventId);
       if (event) {
         const eventRef = doc(db, 'events', eventId);
+
         const batchUserStats: Record<string, number> = {};
+        const batchCompanyStats: Record<string, number> = {};
+
         newEntries.forEach(e => {
           const user = e.recordedBy || 'Bilinmiyor';
           batchUserStats[user] = (batchUserStats[user] || 0) + 1;
+
+          if (e.companyName) {
+            const safeName = e.companyName.replace(/\./g, '_');
+            batchCompanyStats[safeName] = (batchCompanyStats[safeName] || 0) + 1;
+          }
         });
 
         const updates: any = { currentCount: increment(newEntries.length) };
+
         Object.entries(batchUserStats).forEach(([user, count]) => {
           updates[`userCounts.${user}`] = increment(count);
         });
+
+        Object.entries(batchCompanyStats).forEach(([comp, count]) => {
+          updates[`companyCounts.${comp}`] = increment(count);
+        });
+
         batch.update(eventRef, updates);
       }
 
@@ -656,11 +681,20 @@ const App: React.FC = () => {
     try {
       // 2. Write to Firestore in background
       await deleteDoc(doc(db, 'scanned_entries', entry.id));
+
       const userKey = entry.recordedBy || 'Bilinmiyor';
-      await updateDoc(doc(db, 'events', activeEventId), {
+
+      const updates: any = {
         currentCount: increment(-1),
         [`userCounts.${userKey}`]: increment(-1)
-      });
+      };
+
+      if (entry.companyName) {
+        const safeComp = entry.companyName.replace(/\./g, '_');
+        updates[`companyCounts.${safeComp}`] = increment(-1);
+      }
+
+      await updateDoc(doc(db, 'events', activeEventId), updates);
     } catch (e) {
       console.error("Error deleting scan: ", e);
     }

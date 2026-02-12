@@ -23,6 +23,7 @@ export interface Event {
   completionDuration?: string; // "HH:MM:SS" format
   companies?: CompanyTarget[];
   userCounts?: Record<string, number>; // Added for efficient dashboard display without fetching all scans
+  companyCounts?: Record<string, number>; // Added for efficient multi-company dashboard display
 }
 
 export interface CompanyTarget {

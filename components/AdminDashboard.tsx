@@ -847,9 +847,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
                                   {event.companies.map((company, cIdx) => {
                                     const companyEntries = entries.filter(e => e.companyName === company.name);
-                                    // If we have entries, use them. If not, we might not have breakdown. 
-                                    // TODO: Update backend to store company counts in event object for optimized display.
-                                    const companyCount = companyEntries.length;
+
+                                    // FIX: Use Firestore counters if available (for mobile dashboard)
+                                    const safeKey = company.name.replace(/\./g, '_');
+                                    const companyCount = companyEntries.length > 0
+                                      ? companyEntries.length
+                                      : (event.companyCounts?.[safeKey] || 0);
                                     const companyPct = Math.min(100, Math.round((companyCount / company.count) * 100));
                                     const companyReached = companyCount >= company.count;
 
