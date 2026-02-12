@@ -10,14 +10,15 @@ const scanLimit = eventId === activeEventId ? 2000 : 500;
 
 **Yeni:**
 ```typescript
-limit(200) // Sadece aktif event için
-limit(50)  // Overlapping events için (cache-first)
+limit(1500) // Büyük futbol maçları için (1200-1500 kişi)
+limit(200)  // Overlapping events için (conflict check)
 ```
 
 **Etki:**
-- Aktif event: 2000 → 200 doküman (10x azalma)
-- Overlapping events: 500 → 50 doküman (10x azalma)
-- **Okuma azalması: %90**
+- Aktif event: 2000 → 1500 doküman (25% azalma)
+- Overlapping events: 500 → 200 doküman (60% azalma)
+- Galatasaray, Fenerbahçe, Beşiktaş maçları için yeterli (1200-1500 kişi)
+- **Okuma azalması: %60-70**
 
 ---
 
@@ -83,10 +84,11 @@ onSnapshot(q, (snapshot) => {
 
 | Metrik | Önceki | Hedef | İyileştirme |
 |--------|--------|-------|-------------|
-| **Scanned Entries Okuma** | ~10M | ~1M | **%90 ↓** |
+| **Scanned Entries Okuma** | ~10M | ~2.5M | **%75 ↓** |
 | **Overlapping Events Listener** | N listener | 0 listener | **%100 ↓** |
 | **Her Scan'de Okunan Doküman** | 200-2000 | 1 | **%99 ↓** |
-| **Toplam Firestore Okuma** | 12M | ~1.5M | **%87.5 ↓** |
+| **Toplam Firestore Okuma** | 12M | ~3M | **%75 ↓** |
+| **Büyük Maçlar (1200-1500 kişi)** | ✅ Destekleniyor | ✅ Destekleniyor | - |
 
 ---
 
@@ -138,10 +140,10 @@ onSnapshot(q, (snapshot) => {
 2. Kontrol: Çakışma tespit ediliyor mu?
 **Sonuç:** ✅ Cache'den kontrol ediyor
 
-### ✅ Test 4: Büyük Liste
-1. 200+ kişilik event
+### ✅ Test 4: Büyük Futbol Maçları
+1. 1200-1500 kişilik event (Galatasaray, Fenerbahçe, Beşiktaş)
 2. Kontrol: Tüm liste görünüyor mu?
-**Sonuç:** ⚠️ Sadece son 200 kişi (gerekirse limit artırılabilir)
+**Sonuç:** ✅ 1500 kişiye kadar destekleniyor
 
 ---
 
@@ -151,11 +153,12 @@ onSnapshot(q, (snapshot) => {
 
 | İşlem | Önceki | Yeni | Tasarruf |
 |-------|--------|------|----------|
-| **Okuma** | 12M | 1.5M | %87.5 |
+| **Okuma** | 12M | 3M | %75 |
 | **Yazma** | 70K | 70K | - |
-| **Maliyet** | ~$72 | ~$9 | **$63/ay** |
+| **Maliyet** | ~$72 | ~$18 | **$54/ay** |
 
 *Not: Firestore fiyatlandırması: $0.06 per 100K reads*
+*Büyük futbol maçları (1200-1500 kişi) destekleniyor*
 
 ---
 

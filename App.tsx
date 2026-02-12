@@ -319,7 +319,7 @@ const App: React.FC = () => {
               collection(db, 'scanned_entries'),
               where('eventId', '==', eventId),
               orderBy('serverTimestamp', 'desc'),
-              limit(50) // Sadece conflict check için, küçük limit yeterli
+              limit(200) // Overlapping events için yeterli (conflict check)
             );
 
             const snapshot = await getDocs(q); // One-time read, NOT real-time
@@ -344,7 +344,7 @@ const App: React.FC = () => {
           collection(db, 'scanned_entries'),
           where('eventId', '==', activeEventId),
           orderBy('serverTimestamp', 'desc'),
-          limit(200) // REDUCED from 2000 to 200 (10x less reads)
+          limit(1500) // Büyük futbol maçları için (1200-1500 kişi)
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -355,7 +355,7 @@ const App: React.FC = () => {
             if (change.type === 'added') {
               setScannedEntries(prev => ({
                 ...prev,
-                [activeEventId]: [entry, ...(prev[activeEventId] || [])].slice(0, 200)
+                [activeEventId]: [entry, ...(prev[activeEventId] || [])].slice(0, 1500)
               }));
             } else if (change.type === 'modified') {
               setScannedEntries(prev => ({
