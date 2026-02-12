@@ -863,49 +863,39 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
                                   {event.companies.map((company, cIdx) => {
                                     const companyEntries = entries.filter(e => e.companyName === company.name);
-                                    // FIX: Use Maximum of (entries count) and (Firestore counter) to ensure reliability
-                                    // This handles cases where:
-                                    // 1. Mobile view (entries empty, counter has data) -> Counter used
-                                    // 2. Desktop view (entries loaded) -> Entries used
-                                    // 3. Partial sync/lag -> Maximum value used
                                     const safeKey = company.name.replace(/\./g, '_');
-                                    const firestoreCount = event.companyCounts?.[safeKey] || 0;
-                                    const companyCount = Math.max(companyEntries.length, firestoreCount);
+
+                                    // FIX: Trust Firestore counters as source of truth (handles both add & delete correctly)
+                                    // Only fall back to local entries for legacy events without counters
+                                    const hasFirestoreCounters = event.companyCounts !== undefined && event.companyCounts !== null;
+                                    const companyCount = hasFirestoreCounters
+                                      ? (event.companyCounts?.[safeKey] || 0)
+                                      : companyEntries.length;
                                     const companyPct = Math.min(100, Math.round((companyCount / company.count) * 100));
                                     const companyReached = companyCount >= company.count;
 
                                     // Per-user stats for this company
-                                    // FIX: Merge local entries and Firestore counters to ensure consistency
                                     const prefix = `${safeKey}__`;
                                     let companyUserStats: Record<string, number> = {};
 
-                                    // 1. Start with Firestore breakdown (Summary source)
+                                    // If Firestore breakdown exists, use it as source of truth
                                     if (event.companyUserCounts) {
                                       Object.entries(event.companyUserCounts)
                                         .filter(([k]) => k.startsWith(prefix))
                                         .forEach(([k, v]) => {
-                                          const user = k.substring(prefix.length);
-                                          companyUserStats[user] = v;
+                                          if (v > 0) { // Only show users with positive counts
+                                            const user = k.substring(prefix.length);
+                                            companyUserStats[user] = v;
+                                          }
                                         });
-                                    }
-
-                                    // 2. Merge with local entries (incase list has more/fresher data than counter)
-                                    if (companyEntries.length > 0) {
-                                      const localBreakdown = companyEntries.reduce((acc, entry) => {
+                                    } else if (companyEntries.length > 0) {
+                                      // Fallback: calculate from local entries (legacy events)
+                                      companyUserStats = companyEntries.reduce((acc, entry) => {
                                         const user = entry.recordedBy || 'Bilinmiyor';
                                         acc[user] = (acc[user] || 0) + 1;
                                         return acc;
                                       }, {} as Record<string, number>);
-
-                                      Object.entries(localBreakdown).forEach(([user, count]) => {
-                                        // Sanitize user key to match prefix-stripped format used in step 1 if it has dots
-                                        const key = user.replace(/\./g, '_');
-                                        companyUserStats[key] = Math.max(companyUserStats[key] || 0, count);
-                                      });
-                                    }
-
-                                    // 3. Fallback to global stats (legacy or single-company events)
-                                    if (Object.keys(companyUserStats).length === 0 && event.companies?.length === 1) {
+                                    } else if (event.companies?.length === 1) {
                                       companyUserStats = event.userCounts || {};
                                     }
 
