@@ -19,7 +19,8 @@ import {
   getDocs,
   getDocsFromCache,
   where,
-  increment
+  increment,
+  limit
 } from 'firebase/firestore';
 
 // Yardımcı: Önce Firestore IndexedDB cache'inden oku, başarısız olursa sunucudan çek
@@ -187,11 +188,11 @@ const App: React.FC = () => {
     loadUsers();
   }, []);
 
-  // 2. Events Loading — Real-time listener ile tüm cihazlarda güncel kalır
+  // 2. Events Loading — Real-time listener SADECE ACTIVE events için
   useEffect(() => {
     if (!session.isAuthenticated) return;
 
-    // Cache'den anında göster (UI bloklanmasın)
+    // Cache'den anında göster (tüm events)
     const cachedEvents = localStorage.getItem('geds_events_cache');
     if (cachedEvents) {
       try {
@@ -199,15 +200,42 @@ const App: React.FC = () => {
       } catch (e) { /* silent */ }
     }
 
-    // Real-time listener: currentCount, status vb. değişiklikler anında yansır
-    console.log('📡 Events real-time listener başlatılıyor...');
-    const q = query(collection(db, 'events'), orderBy('startDate', 'asc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetchedEvents: Event[] = snapshot.docs.map(doc => doc.data() as Event);
-      setEvents(fetchedEvents);
-      localStorage.setItem('geds_events_cache', JSON.stringify(fetchedEvents));
-      localStorage.setItem('geds_events_fetch_ts', Date.now().toString());
-      console.log(`✅ Events güncellendi (real-time): ${fetchedEvents.length}`);
+    // Real-time listener: SADECE ACTIVE events (pasifler cache'den)
+    console.log('📡 Events real-time listener başlatılıyor (sadece ACTIVE)...');
+    const q = query(
+      collection(db, 'events'),
+      where('status', '==', 'ACTIVE'),
+      orderBy('startDate', 'asc')
+    );
+
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      const activeEvents: Event[] = snapshot.docs.map(doc => doc.data() as Event);
+
+      // Passive events'i cache'den al veya ilk kez çek
+      let passiveEvents: Event[] = [];
+      const passiveCache = localStorage.getItem('geds_passive_events_cache');
+
+      if (passiveCache) {
+        passiveEvents = JSON.parse(passiveCache);
+      } else {
+        // İlk kez passive events'i çek ve cache'le
+        const pq = query(
+          collection(db, 'events'),
+          where('status', '==', 'PASSIVE'),
+          orderBy('startDate', 'asc')
+        );
+        const pSnapshot = await getDocs(pq);
+        passiveEvents = pSnapshot.docs.map(doc => doc.data() as Event);
+        localStorage.setItem('geds_passive_events_cache', JSON.stringify(passiveEvents));
+      }
+
+      const allEvents = [...activeEvents, ...passiveEvents].sort((a, b) =>
+        new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+      );
+
+      setEvents(allEvents);
+      localStorage.setItem('geds_events_cache', JSON.stringify(allEvents));
+      console.log(`✅ Events güncellendi (real-time): ${activeEvents.length} active, ${passiveEvents.length} passive`);
     }, (error) => {
       console.error('Events listener error:', error);
     });
@@ -333,57 +361,69 @@ const App: React.FC = () => {
           })
           .map(e => e.id);
 
-        console.log(`📡 Setting up real-time listener for ${overlappingEventIds.length} overlapping events' scans...`);
+        console.log(`📡 Setting up real-time listener for active event's scans only...`);
 
-        // 3. Real-time listeners for all overlapping events
-        const unsubscribers: (() => void)[] = [];
+        // 3. Real-time listener SADECE aktif event için (overlapping'ler cache'den)
+        const q = query(
+          collection(db, 'scanned_entries'),
+          where('eventId', '==', activeEventId),
+          orderBy('serverTimestamp', 'desc'),
+          limit(500) // Son 500 scan (performans için)
+        );
 
-        for (let i = 0; i < overlappingEventIds.length; i += 10) {
-          const chunk = overlappingEventIds.slice(i, i + 10);
-          const q = query(
-            collection(db, 'scanned_entries'),
-            where('eventId', 'in', chunk)
-          );
+        const unsubscribe = onSnapshot(q, async (snapshot) => {
+          const activeEntries: ScanEntry[] = snapshot.docs.map(d => d.data() as ScanEntry);
 
-          const unsubscribe = onSnapshot(q, (snapshot) => {
-            const allEntries: Record<string, ScanEntry[]> = {};
+          // Overlapping events'i bir kez cache'den veya Firestore'dan al (conflict check için)
+          let overlappingEntries: Record<string, ScanEntry[]> = { [activeEventId]: activeEntries };
 
-            snapshot.docs.forEach(d => {
-              const entry = d.data() as ScanEntry;
-              if (!allEntries[entry.eventId]) allEntries[entry.eventId] = [];
-              allEntries[entry.eventId].push(entry);
-            });
+          for (let i = 0; i < overlappingEventIds.length; i += 10) {
+            const chunk = overlappingEventIds.slice(i, i + 10).filter(id => id !== activeEventId);
+            if (chunk.length === 0) continue;
 
-            // Sort entries by timestamp
-            Object.keys(allEntries).forEach(eventId => {
-              allEntries[eventId].sort((a, b) =>
-                (Number(b.serverTimestamp) || 0) - (Number(a.serverTimestamp) || 0)
-              );
-            });
+            const oq = query(
+              collection(db, 'scanned_entries'),
+              where('eventId', 'in', chunk)
+            );
 
-            setScannedEntries(prev => ({ ...prev, ...allEntries }));
-            console.log(`✅ Scanned entries updated (real-time): ${Object.values(allEntries).flat().length} scans`);
-
-            // Update cache
             try {
-              const currentCacheStr = localStorage.getItem('geds_scanned_entries_cache');
-              let newCache = currentCacheStr ? JSON.parse(currentCacheStr) : {};
-              Object.assign(newCache, allEntries);
-              localStorage.setItem('geds_scanned_entries_cache', JSON.stringify(newCache));
-            } catch (e) {
-              console.warn("Cache update error", e);
+              const oSnapshot = await getDocsFromCache(oq);
+              oSnapshot.docs.forEach(d => {
+                const entry = d.data() as ScanEntry;
+                if (!overlappingEntries[entry.eventId]) overlappingEntries[entry.eventId] = [];
+                overlappingEntries[entry.eventId].push(entry);
+              });
+            } catch {
+              // Cache miss - fetch from server (one-time)
+              const oSnapshot = await getDocs(oq);
+              oSnapshot.docs.forEach(d => {
+                const entry = d.data() as ScanEntry;
+                if (!overlappingEntries[entry.eventId]) overlappingEntries[entry.eventId] = [];
+                overlappingEntries[entry.eventId].push(entry);
+              });
             }
-          }, (error) => {
-            console.error('Scanned entries listener error:', error);
-          });
+          }
 
-          unsubscribers.push(unsubscribe);
-        }
+          setScannedEntries(overlappingEntries);
+          console.log(`✅ Scanned entries updated (real-time): ${activeEntries.length} active scans`);
+
+          // Update cache
+          try {
+            const currentCacheStr = localStorage.getItem('geds_scanned_entries_cache');
+            let newCache = currentCacheStr ? JSON.parse(currentCacheStr) : {};
+            Object.assign(newCache, overlappingEntries);
+            localStorage.setItem('geds_scanned_entries_cache', JSON.stringify(newCache));
+          } catch (e) {
+            console.warn("Cache update error", e);
+          }
+        }, (error) => {
+          console.error('Scanned entries listener error:', error);
+        });
 
         // Cleanup function
         return () => {
-          console.log('🔌 Scanned entries listeners closed.');
-          unsubscribers.forEach(unsub => unsub());
+          console.log('🔌 Scanned entries listener closed.');
+          unsubscribe();
         };
 
       } catch (e) {
