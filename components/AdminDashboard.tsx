@@ -475,11 +475,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         "TC Kimlik No": item.citizen.tc,
         "Ad": item.citizen.name,
         "Soyad": item.citizen.surname,
-        "Şirket": item.companyName || '-',
         "Geçerlilik Tarihi": item.citizen.validityDate,
         "Durum": status.text,
         "Okutma Saati": item.timestamp,
         "Kaydeden": item.recordedBy,
+        "Şirket": item.companyName || '-',
         "Etkinlik": viewingEvent.name
       };
     });
