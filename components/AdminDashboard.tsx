@@ -37,6 +37,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onReactivateEvent,
   onAddUser,
   onUpdateUser,
+  onDeleteUser,
   onUpdateEvent,
   onRefreshPassiveData,
   onSyncEvent,
@@ -46,6 +47,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [activeTab, setActiveTab] = useState<'EVENTS' | 'USERS'>('EVENTS');
   const [showEventModal, setShowEventModal] = useState(false);
   const [viewingEvent, setViewingEvent] = useState<Event | null>(null);
+  const [viewingCompanyFilter, setViewingCompanyFilter] = useState<string | null>(null);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
 
   // Company Selection State
@@ -458,7 +460,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleExportExcel = async () => {
     if (!viewingEvent) return;
-    const entries = scannedEntries[viewingEvent.id] || [];
+    const allEntries = scannedEntries[viewingEvent.id] || [];
+
+    // Şirket filtresine göre verileri filtrele
+    const entries = viewingCompanyFilter
+      ? allEntries.filter(e => e.companyName === viewingCompanyFilter)
+      : allEntries;
 
     const XLSX = await import('xlsx');
 
@@ -468,6 +475,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         "TC Kimlik No": item.citizen.tc,
         "Ad": item.citizen.name,
         "Soyad": item.citizen.surname,
+        "Şirket": item.companyName || '-',
         "Geçerlilik Tarihi": item.citizen.validityDate,
         "Durum": status.text,
         "Okutma Saati": item.timestamp,
@@ -479,7 +487,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const ws = XLSX.utils.json_to_sheet(dataToExport);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Katılımcı Listesi");
-    XLSX.writeFile(wb, `${viewingEvent.name} _Katilimci_Listesi.xlsx`);
+
+    // Dosya adına şirket adını ekle (varsa)
+    const fileName = viewingCompanyFilter
+      ? `${viewingEvent.name}_${viewingCompanyFilter}_Katilimci_Listesi.xlsx`
+      : `${viewingEvent.name}_Katilimci_Listesi.xlsx`;
+    XLSX.writeFile(wb, fileName);
   };
 
   const formatDateTime = (dateString: string) => {
@@ -908,14 +921,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                         </div>
                                         <div className="flex items-center gap-1.5 text-[10px] text-gray-500 dark:text-gray-400 mb-1">
                                           <span className={`font-bold ${companyReached ? 'text-green-600 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}`}>
-                                            {companyCount > 0 ? companyCount : (event.companies?.length === 1 ? realCount : companyCount)} / {company.count}
+                                            {companyCount} / {company.count}
                                           </span>
-                                          <span>(%{Math.min(100, Math.round(((companyCount > 0 ? companyCount : (event.companies?.length === 1 ? realCount : companyCount)) / company.count) * 100))})</span>
+                                          <span>(%{companyPct})</span>
                                         </div>
                                         <div className="w-full bg-gray-200 dark:bg-gray-700 h-1 rounded-full overflow-hidden mb-1.5">
                                           <div
                                             className={`h-full transition-all duration-500 rounded-full ${companyReached ? 'bg-green-500' : 'bg-blue-500'}`}
-                                            style={{ width: `${Math.min(100, Math.round(((companyCount > 0 ? companyCount : (event.companies?.length === 1 ? realCount : companyCount)) / company.count) * 100))}%` }}
+                                            style={{ width: `${companyPct}%` }}
                                           ></div>
                                         </div>
                                         {Object.keys(companyUserStats).length > 0 && (
@@ -1685,12 +1698,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
             <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
               <div className="flex justify-between items-center p-6 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50 rounded-t-2xl">
-                <div>
+                <div className="flex-1">
                   <h2 className="text-xl font-bold text-gray-900 dark:text-white">{viewingEvent.name}</h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400">Katılımcı Listesi</p>
+
+                  {/* Şirket Filtresi (çoklu şirketli etkinlikler için) */}
+                  {viewingEvent.companies && viewingEvent.companies.length > 0 && (
+                    <div className="mt-3 flex items-center gap-2">
+                      <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Şirket Filtresi:</label>
+                      <select
+                        value={viewingCompanyFilter || ''}
+                        onChange={(e) => setViewingCompanyFilter(e.target.value || null)}
+                        className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                      >
+                        <option value="">Tüm Şirketler</option>
+                        {viewingEvent.companies.map((company, idx) => (
+                          <option key={idx} value={company.name}>{company.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
                 <button
-                  onClick={() => setViewingEvent(null)}
+                  onClick={() => {
+                    setViewingEvent(null);
+                    setViewingCompanyFilter(null);
+                  }}
                   className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition"
                 >
                   <X size={24} />
@@ -1746,30 +1779,45 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">NO</th>
                       <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">TC</th>
                       <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">Ad Soyad</th>
+                      {viewingEvent.companies && viewingEvent.companies.length > 0 && (
+                        <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">Şirket</th>
+                      )}
                       <th className="hidden sm:table-cell px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">Durum</th>
                       <th className="hidden sm:table-cell px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">Saat</th>
                       <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">Kaydeden</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                    {scannedEntries[viewingEvent.id]?.map((entry, index) => {
-                      if (!entry || !entry.citizen) return null;
-                      const status = checkWorkStatus(entry.citizen.validityDate);
-                      return (
-                        <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                          <td className="px-4 sm:px-6 py-3 text-gray-500 dark:text-gray-400 text-center">{index + 1}</td>
-                          <td className="px-4 sm:px-6 py-3 font-mono text-gray-900 dark:text-gray-200 text-center">{entry.citizen.tc}</td>
-                          <td className="px-4 sm:px-6 py-3 font-medium text-gray-900 dark:text-gray-200 text-center">{entry.citizen.name} {entry.citizen.surname}</td>
-                          <td className="hidden sm:table-cell px-6 py-3 text-center">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${status.bg} ${status.color}`}>
-                              {status.text}
-                            </span>
-                          </td>
-                          <td className="hidden sm:table-cell px-6 py-3 text-gray-500 dark:text-gray-400 text-center">{entry.timestamp}</td>
-                          <td className="px-6 py-3 text-gray-500 dark:text-gray-400 font-medium text-center">{entry.recordedBy || '-'}</td>
-                        </tr>
-                      )
-                    })}
+                    {(() => {
+                      const allEntries = scannedEntries[viewingEvent.id] || [];
+                      const filteredEntries = viewingCompanyFilter
+                        ? allEntries.filter(e => e.companyName === viewingCompanyFilter)
+                        : allEntries;
+
+                      return filteredEntries.map((entry, index) => {
+                        if (!entry || !entry.citizen) return null;
+                        const status = checkWorkStatus(entry.citizen.validityDate);
+                        return (
+                          <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                            <td className="px-4 sm:px-6 py-3 text-gray-500 dark:text-gray-400 text-center">{index + 1}</td>
+                            <td className="px-4 sm:px-6 py-3 font-mono text-gray-900 dark:text-gray-200 text-center">{entry.citizen.tc}</td>
+                            <td className="px-4 sm:px-6 py-3 font-medium text-gray-900 dark:text-gray-200 text-center">{entry.citizen.name} {entry.citizen.surname}</td>
+                            {viewingEvent.companies && viewingEvent.companies.length > 0 && (
+                              <td className="px-4 sm:px-6 py-3 text-gray-600 dark:text-gray-300 font-medium text-center">
+                                {entry.companyName || '-'}
+                              </td>
+                            )}
+                            <td className="hidden sm:table-cell px-6 py-3 text-center">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${status.bg} ${status.color}`}>
+                                {status.text}
+                              </span>
+                            </td>
+                            <td className="hidden sm:table-cell px-6 py-3 text-gray-500 dark:text-gray-400 text-center">{entry.timestamp}</td>
+                            <td className="px-6 py-3 text-gray-500 dark:text-gray-400 font-medium text-center">{entry.recordedBy || '-'}</td>
+                          </tr>
+                        );
+                      });
+                    })()}
                     {(!scannedEntries[viewingEvent.id] || scannedEntries[viewingEvent.id].length === 0) && (
                       <tr>
                         <td colSpan={6} className="px-6 py-8 text-center text-gray-400 dark:text-gray-500">

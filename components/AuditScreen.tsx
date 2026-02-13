@@ -564,7 +564,8 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   const exportToExcel = async () => {
     const XLSX = await import('xlsx');
 
-    const dataToExport = scannedList.map(item => {
+    // Çoklu şirketli etkinliklerde sadece seçili şirketin verilerini export et
+    const dataToExport = companyFilteredList.map(item => {
       const status = checkWorkStatus(item.citizen.validityDate);
       return {
         "TC Kimlik No": item.citizen.tc,
@@ -582,7 +583,12 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     const ws = XLSX.utils.json_to_sheet(dataToExport);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Katılımcı Listesi");
-    XLSX.writeFile(wb, `${event.name}.xlsx`);
+
+    // Dosya adına şirket adını ekle (varsa)
+    const fileName = activeCompanyName
+      ? `${event.name}_${activeCompanyName}.xlsx`
+      : `${event.name}.xlsx`;
+    XLSX.writeFile(wb, fileName);
   };
 
   const handleFinishAudit = async () => {
