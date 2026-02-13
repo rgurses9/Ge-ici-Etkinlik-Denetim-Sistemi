@@ -623,8 +623,43 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     XLSX.writeFile(wb, fileName);
   };
 
+  // Tüm şirketlerin verilerini export et (Denetimi Bitir için)
+  const exportAllCompaniesToExcel = async () => {
+    const XLSX = await import('xlsx');
+
+    // TÜM kayıtları export et (şirket filtresi olmadan)
+    const dataToExport = scannedList.map(item => {
+      const status = checkWorkStatus(item.citizen.validityDate);
+      return {
+        "TC Kimlik No": item.citizen.tc,
+        "Ad": item.citizen.name,
+        "Soyad": item.citizen.surname,
+        "Geçerlilik Tarihi": item.citizen.validityDate,
+        "Durum": status.text,
+        "Okutma Saati": item.timestamp,
+        "Kaydeden": item.recordedBy,
+        "Şirket": item.companyName || '-',
+        "Etkinlik": event.name
+      };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(dataToExport);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Tüm Şirketler");
+
+    // Dosya adı: Etkinlik adı + "Tüm Şirketler"
+    const fileName = `${event.name}_Tum_Sirketler.xlsx`;
+    XLSX.writeFile(wb, fileName);
+  };
+
   const handleFinishAudit = async () => {
-    await exportToExcel();
+    // Çoklu şirketli etkinliklerde TÜM şirketlerin verilerini export et
+    if (event.companies && event.companies.length > 0) {
+      await exportAllCompaniesToExcel();
+    } else {
+      // Tek şirketli veya şirketsiz etkinliklerde normal export
+      await exportToExcel();
+    }
 
     const diff = Date.now() - startTime;
     const hours = Math.floor(diff / 3600000);
