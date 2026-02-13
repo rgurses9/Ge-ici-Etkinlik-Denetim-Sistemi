@@ -373,6 +373,21 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       return;
     }
 
+    // ŞİRKET HEDEF KONTROLÜ - Şirket hedefine ulaşıldıysa daha fazla okutmaya izin verme
+    if (activeCompanyName) {
+      const companyTarget = event.companies?.find(c => c.name === activeCompanyName)?.count || 0;
+      const companyCurrentCount = scannedList.filter(s => s.companyName === activeCompanyName).length;
+
+      if (companyCurrentCount >= companyTarget) {
+        setLastScanResult({
+          status: 'ERROR',
+          message: `❌ ${activeCompanyName} şirketinin hedef sayısına ulaşıldı! (${companyCurrentCount}/${companyTarget})\n\nBu şirketten daha fazla kayıt yapılamaz.`
+        });
+        setTcInput('');
+        return;
+      }
+    }
+
     // DB Lookup
     let citizen = database.find(c => c.tc === trimmedTC);
     let message = '';
@@ -392,7 +407,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       status = 'WARNING';
     }
 
-    // Check if we hit the company-specific target with this scan
+    // Bilgilendirme mesajları (hedef kontrolü yukarıda yapıldı)
     if (activeCompanyName) {
       const companyTarget = event.companies?.find(c => c.name === activeCompanyName)?.count || 0;
       const companyCurrentCount = scannedList.filter(s => s.companyName === activeCompanyName).length + 1;
@@ -460,6 +475,14 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       const currentTimestamp = new Date().toLocaleTimeString();
       let currentScannedCount = scannedList.length;
 
+      // Şirket hedef kontrolü için mevcut şirket sayısını hesapla
+      const companyTarget = activeCompanyName
+        ? (event.companies?.find(c => c.name === activeCompanyName)?.count || 0)
+        : 0;
+      const companyCurrentCount = activeCompanyName
+        ? scannedList.filter(s => s.companyName === activeCompanyName).length
+        : 0;
+
       // Flatten data to get just TCs from first available column
       for (let i = 0; i < data.length; i++) {
         const row = data[i];
@@ -473,8 +496,17 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
         if (tc.length !== 11) continue;
 
         if (currentScannedCount + newEntries.length >= event.targetCount) {
-          errorMsg = 'Hedef limite ulaşıldı.';
+          errorMsg = 'Toplam hedef limite ulaşıldı.';
           break;
+        }
+
+        // ŞİRKET HEDEF KONTROLÜ - Excel yüklemede de şirket hedefini kontrol et
+        if (activeCompanyName && companyTarget > 0) {
+          const companyEntriesInBatch = newEntries.filter(e => e.companyName === activeCompanyName).length;
+          if (companyCurrentCount + companyEntriesInBatch >= companyTarget) {
+            errorMsg = `${activeCompanyName} şirketinin hedef sayısına ulaşıldı (${companyTarget}).`;
+            break;
+          }
         }
 
         // 1. Duplicate in List
