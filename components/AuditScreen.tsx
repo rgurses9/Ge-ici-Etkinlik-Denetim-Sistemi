@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Event, Citizen, ScanEntry, User, UserRole } from '../types';
 import { MOCK_CITIZEN_DB } from '../constants';
-import { Download, X, CheckCircle, AlertCircle, MessageSquare, Database, Loader2, Trash2, User as UserIcon, Clock, Upload, RefreshCw } from 'lucide-react';
+import { Download, X, CheckCircle, AlertCircle, MessageSquare, Database, Loader2, Trash2, User as UserIcon, Clock, Upload, RefreshCw, FileSpreadsheet } from 'lucide-react';
+import { db } from '../firebase';
+import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 
 
 
@@ -243,6 +245,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   const [showSummary, setShowSummary] = useState(false);
   const [durationStr, setDurationStr] = useState('');
   const [isScanning, setIsScanning] = useState(false); // Mükerrer kayıt önleme için
+  const [isExporting, setIsExporting] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -624,62 +627,115 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   };
 
   const exportToExcel = async () => {
-    const XLSX = await import('xlsx');
+    if (isExporting) return;
+    setIsExporting(true);
+    try {
+      const XLSX = await import('xlsx');
 
-    // Çoklu şirketli etkinliklerde sadece seçili şirketin verilerini export et
-    const dataToExport = companyFilteredList.map(item => {
-      const status = checkWorkStatus(item.citizen.validityDate);
-      return {
-        "TC Kimlik No": item.citizen.tc,
-        "Ad": item.citizen.name,
-        "Soyad": item.citizen.surname,
-        "Geçerlilik Tarihi": item.citizen.validityDate,
-        "Durum": status.text,
-        "Okutma Saati": item.timestamp,
-        "Kaydeden": item.recordedBy,
-        "Şirket": item.companyName || '-',
-        "Etkinlik": event.name
-      };
-    });
+      // Fetch full data from Firestore on demand (to bypass 200 limit)
+      let allData: ScanEntry[] = [];
+      try {
+        let q;
+        if (activeCompanyName) {
+          q = query(collection(db, 'scanned_entries'),
+            where('eventId', '==', event.id),
+            where('companyName', '==', activeCompanyName));
+        } else {
+          q = query(collection(db, 'scanned_entries'),
+            where('eventId', '==', event.id));
+        }
+        const snapshot = await getDocs(q);
+        allData = snapshot.docs.map(doc => doc.data() as ScanEntry);
+        // Sort by serverTimestamp descending
+        allData.sort((a, b) => (b.serverTimestamp || 0) - (a.serverTimestamp || 0));
+      } catch (err) {
+        console.error("Error fetching full data for export:", err);
+        alert('Tüm liste çekilemedi, ekrandaki mevcut liste indirilecek.');
+        allData = companyFilteredList;
+      }
 
-    const ws = XLSX.utils.json_to_sheet(dataToExport);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Katılımcı Listesi");
+      // Çoklu şirketli etkinliklerde sadece seçili şirketin verilerini export et
+      const dataToExport = allData.map(item => {
+        const status = checkWorkStatus(item.citizen.validityDate);
+        return {
+          "TC Kimlik No": item.citizen.tc,
+          "Ad": item.citizen.name,
+          "Soyad": item.citizen.surname,
+          "Geçerlilik Tarihi": item.citizen.validityDate,
+          "Durum": status.text,
+          "Okutma Saati": item.timestamp,
+          "Kaydeden": item.recordedBy,
+          "Şirket": item.companyName || '-',
+          "Etkinlik": event.name
+        };
+      });
 
-    // Dosya adına şirket adını ekle (varsa)
-    const fileName = activeCompanyName
-      ? `${event.name}_${activeCompanyName}.xlsx`
-      : `${event.name}.xlsx`;
-    XLSX.writeFile(wb, fileName);
+      const ws = XLSX.utils.json_to_sheet(dataToExport);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Katılımcı Listesi");
+
+      // Dosya adına şirket adını ekle (varsa)
+      const fileName = activeCompanyName
+        ? `${event.name}_${activeCompanyName}.xlsx`
+        : `${event.name}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+    } catch (e) {
+      console.error(e);
+      alert('Excel oluşturulurken hata oluştu.');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   // Tüm şirketlerin verilerini export et (Denetimi Bitir için)
   const exportAllCompaniesToExcel = async () => {
-    const XLSX = await import('xlsx');
+    if (isExporting) return;
+    setIsExporting(true);
+    try {
+      const XLSX = await import('xlsx');
 
-    // TÜM kayıtları export et (şirket filtresi olmadan)
-    const dataToExport = scannedList.map(item => {
-      const status = checkWorkStatus(item.citizen.validityDate);
-      return {
-        "TC Kimlik No": item.citizen.tc,
-        "Ad": item.citizen.name,
-        "Soyad": item.citizen.surname,
-        "Geçerlilik Tarihi": item.citizen.validityDate,
-        "Durum": status.text,
-        "Okutma Saati": item.timestamp,
-        "Kaydeden": item.recordedBy,
-        "Şirket": item.companyName || '-',
-        "Etkinlik": event.name
-      };
-    });
+      // Fetch full data from Firestore on demand
+      let allData: ScanEntry[] = [];
+      try {
+        const q = query(collection(db, 'scanned_entries'), where('eventId', '==', event.id));
+        const snapshot = await getDocs(q);
+        const data = snapshot.docs.map(doc => doc.data() as ScanEntry);
+        data.sort((a, b) => (b.serverTimestamp || 0) - (a.serverTimestamp || 0));
+        allData = data;
+      } catch (err) {
+        console.error("Error fetching full data:", err);
+        allData = scannedList;
+      }
 
-    const ws = XLSX.utils.json_to_sheet(dataToExport);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Tüm Şirketler");
+      // TÜM kayıtları export et (şirket filtresi olmadan)
+      const dataToExport = allData.map(item => {
+        const status = checkWorkStatus(item.citizen.validityDate);
+        return {
+          "TC Kimlik No": item.citizen.tc,
+          "Ad": item.citizen.name,
+          "Soyad": item.citizen.surname,
+          "Geçerlilik Tarihi": item.citizen.validityDate,
+          "Durum": status.text,
+          "Okutma Saati": item.timestamp,
+          "Kaydeden": item.recordedBy,
+          "Şirket": item.companyName || '-',
+          "Etkinlik": event.name
+        };
+      });
 
-    // Dosya adı: Etkinlik adı + "Tüm Şirketler"
-    const fileName = `${event.name}_Tum_Sirketler.xlsx`;
-    XLSX.writeFile(wb, fileName);
+      const ws = XLSX.utils.json_to_sheet(dataToExport);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Tüm Şirketler");
+
+      // Dosya adı: Etkinlik adı + "Tüm Şirketler"
+      const fileName = `${event.name}_Tum_Sirketler.xlsx`;
+      XLSX.writeFile(wb, fileName);
+    } catch (e) {
+      console.error(e);
+      alert('Excel oluşturulurken hata oluştu.');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handleFinishAudit = async () => {
@@ -923,10 +979,14 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
           <div className="flex gap-2">
             <button
               onClick={exportToExcel}
-              disabled={companyFilteredList.length === 0}
+              disabled={companyFilteredList.length === 0 || isExporting}
               className="flex items-center gap-1.5 bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Download size={14} /> Excel'e Aktar
+              {isExporting ? (
+                <><Loader2 size={14} className="animate-spin" /> Hazırlanıyor...</>
+              ) : (
+                <><Download size={14} /> Excel'e Aktar</>
+              )}
             </button>
             {/* Partial Finish Button */}
             {!isTargetReached && companyFilteredList.length > 0 && (
