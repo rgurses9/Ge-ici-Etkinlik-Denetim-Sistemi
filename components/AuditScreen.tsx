@@ -585,13 +585,17 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
           };
         }
 
+        const timestamp = Date.now();
+        const uniqueId = `${event.id}_${tc}_${timestamp}_${Math.random().toString().slice(2, 8)}`;
+
         newEntries.push({
-          id: Date.now().toString() + Math.random().toString().slice(2),
+          id: uniqueId,
           eventId: event.id,
           citizen: citizen,
           timestamp: currentTimestamp,
           recordedBy: currentUser.username,
-          companyName: activeCompanyName || undefined
+          companyName: activeCompanyName || undefined,
+          serverTimestamp: timestamp // CRITICAL: Firestore için gerekli
         });
 
         successCount++;
