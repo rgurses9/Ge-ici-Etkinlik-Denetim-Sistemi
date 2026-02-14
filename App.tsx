@@ -575,11 +575,13 @@ const App: React.FC = () => {
       const entryWithUniqueId = { ...entry, id: uniqueId, serverTimestamp: timestamp };
 
       // 1. OPTIMISTIC LOCAL UPDATE (Instant UI, Zero Reads)
-      // NOTE: currentCount artırımı KALDIRILDI - Firestore listener zaten yapıyor (double-counting önlendi)
       setScannedEntries(prev => ({
         ...prev,
         [entry.eventId]: [entryWithUniqueId, ...(prev[entry.eventId] || [])]
       }));
+
+      // Update events state locally for immediate progress bar feedback
+      setEvents(prev => prev.map(e => e.id === entry.eventId ? { ...e, currentCount: (e.currentCount || 0) + 1 } : e));
 
       // 2. Write to Firestore in background (only writes, no reads triggered)
       // FIX: Remove undefined fields to prevent Firestore error
@@ -694,11 +696,13 @@ const App: React.FC = () => {
     if (!activeEventId) return;
 
     // 1. OPTIMISTIC LOCAL UPDATE (Instant UI, Zero Reads)
-    // NOTE: currentCount azaltımı KALDIRILDI - Firestore listener zaten yapıyor (double-counting önlendi)
     setScannedEntries(prev => ({
       ...prev,
       [activeEventId]: (prev[activeEventId] || []).filter(e => e.id !== entry.id)
     }));
+
+    // Update events state locally for immediate progress bar feedback
+    setEvents(prev => prev.map(e => e.id === activeEventId ? { ...e, currentCount: Math.max(0, (e.currentCount || 0) - 1) } : e));
 
     try {
       // 2. Write to Firestore in background
