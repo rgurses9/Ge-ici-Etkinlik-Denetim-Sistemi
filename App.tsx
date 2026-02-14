@@ -617,10 +617,21 @@ const App: React.FC = () => {
     const eventId = newEntries[0].eventId;
 
     // 1. OPTIMISTIC LOCAL UPDATE (Instant UI, Zero Reads)
-    // NOTE: currentCount artırımı KALDIRILDI - Firestore listener zaten yapıyor (double-counting önlendi)
+    // Entries update
     setScannedEntries(prev => ({
       ...prev,
       [eventId]: [...newEntries, ...(prev[eventId] || [])]
+    }));
+
+    // Events update (Counter) - Dashboard için anında geri bildirim
+    setEvents(prev => prev.map(e => {
+      if (e.id === eventId) {
+        return {
+          ...e,
+          currentCount: (e.currentCount || 0) + newEntries.length
+        };
+      }
+      return e;
     }));
 
     try {
@@ -638,42 +649,40 @@ const App: React.FC = () => {
         batch.set(ref, cleanEntry);
       });
 
-      const event = events.find(e => e.id === eventId);
-      if (event) {
-        const eventRef = doc(db, 'events', eventId);
+      // Event stats update (Counter logic)
+      const eventRef = doc(db, 'events', eventId);
 
-        const batchUserStats: Record<string, number> = {};
-        const batchCompanyStats: Record<string, number> = {};
-        const batchCompanyUserStats: Record<string, number> = {};
+      const batchUserStats: Record<string, number> = {};
+      const batchCompanyStats: Record<string, number> = {};
+      const batchCompanyUserStats: Record<string, number> = {};
 
-        newEntries.forEach(e => {
-          const user = e.recordedBy || 'Bilinmiyor';
-          batchUserStats[user] = (batchUserStats[user] || 0) + 1;
+      newEntries.forEach(e => {
+        const user = e.recordedBy || 'Bilinmiyor';
+        batchUserStats[user] = (batchUserStats[user] || 0) + 1;
 
-          if (e.companyName) {
-            const safeName = e.companyName.replace(/\./g, '_');
-            const safeUser = user.replace(/\./g, '_');
-            batchCompanyStats[safeName] = (batchCompanyStats[safeName] || 0) + 1;
-            batchCompanyUserStats[`${safeName}__${safeUser}`] = (batchCompanyUserStats[`${safeName}__${safeUser}`] || 0) + 1;
-          }
-        });
+        if (e.companyName) {
+          const safeName = e.companyName.replace(/\./g, '_');
+          const safeUser = user.replace(/\./g, '_');
+          batchCompanyStats[safeName] = (batchCompanyStats[safeName] || 0) + 1;
+          batchCompanyUserStats[`${safeName}__${safeUser}`] = (batchCompanyUserStats[`${safeName}__${safeUser}`] || 0) + 1;
+        }
+      });
 
-        const updates: any = { currentCount: increment(newEntries.length) };
+      const updates: any = { currentCount: increment(newEntries.length) };
 
-        Object.entries(batchUserStats).forEach(([user, count]) => {
-          updates[`userCounts.${user}`] = increment(count);
-        });
+      Object.entries(batchUserStats).forEach(([user, count]) => {
+        updates[`userCounts.${user}`] = increment(count);
+      });
 
-        Object.entries(batchCompanyStats).forEach(([comp, count]) => {
-          updates[`companyCounts.${comp}`] = increment(count);
-        });
+      Object.entries(batchCompanyStats).forEach(([comp, count]) => {
+        updates[`companyCounts.${comp}`] = increment(count);
+      });
 
-        Object.entries(batchCompanyUserStats).forEach(([key, count]) => {
-          updates[`companyUserCounts.${key}`] = increment(count);
-        });
+      Object.entries(batchCompanyUserStats).forEach(([key, count]) => {
+        updates[`companyUserCounts.${key}`] = increment(count);
+      });
 
-        batch.update(eventRef, updates);
-      }
+      batch.update(eventRef, updates);
 
       await batch.commit();
     } catch (e) {
