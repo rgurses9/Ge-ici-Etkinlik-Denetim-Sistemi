@@ -353,10 +353,22 @@ const App: React.FC = () => {
             const entry = change.doc.data() as ScanEntry;
 
             if (change.type === 'added') {
-              setScannedEntries(prev => ({
-                ...prev,
-                [activeEventId]: [entry, ...(prev[activeEventId] || [])].slice(0, 1500)
-              }));
+              // DUPLICATE PREVENTION: Check if entry already exists in local state
+              // This prevents double-counting when optimistic update is followed by Firestore listener
+              setScannedEntries(prev => {
+                const existingList = prev[activeEventId] || [];
+                const alreadyExists = existingList.some(e => e.id === entry.id);
+
+                if (alreadyExists) {
+                  console.log(`⚠️ Duplicate prevented: ${entry.id} already in local state`);
+                  return prev; // Don't add duplicate
+                }
+
+                return {
+                  ...prev,
+                  [activeEventId]: [entry, ...existingList].slice(0, 1500)
+                };
+              });
             } else if (change.type === 'modified') {
               setScannedEntries(prev => ({
                 ...prev,
