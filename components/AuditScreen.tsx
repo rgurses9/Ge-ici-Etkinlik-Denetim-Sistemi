@@ -715,8 +715,10 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     ? (event.companies?.find(c => c.name === activeCompanyName)?.count || event.targetCount)
     : event.targetCount;
   const progressPercentage = Math.min(100, Math.round((companyFilteredList.length / effectiveTarget) * 100));
+
   // Finish button requires TOTAL event target (all companies combined)
   const isTargetReached = scannedList.length >= event.targetCount;
+
 
   if (showSummary) {
     return (
