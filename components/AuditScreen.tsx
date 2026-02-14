@@ -242,6 +242,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   const [startTime] = useState(Date.now());
   const [showSummary, setShowSummary] = useState(false);
   const [durationStr, setDurationStr] = useState('');
+  const [isScanning, setIsScanning] = useState(false); // Mükerrer kayıt önleme için
 
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -341,16 +342,26 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
     if (!trimmedTC) return;
 
+    // Eğer zaten bir okutma işlemi devam ediyorsa, yeni okutmaya izin verme
+    if (isScanning) {
+      console.log('⚠️ Okutma işlemi devam ediyor, lütfen bekleyin...');
+      return;
+    }
+
     if (trimmedTC.length !== 11) {
       setLastScanResult({ status: 'ERROR', message: 'TC Kimlik Numarası 11 haneli olmalıdır.' });
       return;
     }
 
+    // HEDEF SAYIYA ULAŞILDI MI KONTROLÜ - En başta kontrol et
     if (scannedList.length >= event.targetCount) {
-      setLastScanResult({ status: 'ERROR', message: 'Toplam hedef kişi sayısına ulaşıldı. Daha fazla kayıt yapılamaz. Denetlemeyi bitir' });
+      setLastScanResult({ status: 'ERROR', message: '🚫 TOPLAM HEDEF SAYIYA ULAŞILDI! Daha fazla kayıt yapılamaz. Lütfen "Denetimi Bitir" butonuna basın.' });
       setTcInput('');
       return;
     }
+
+    // Okutma işlemini başlat
+    setIsScanning(true);
 
     // Check existing in list (across ALL companies in this event)
     const alreadyScanned = scannedList.find(s => s.citizen.tc === trimmedTC);
@@ -361,6 +372,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
         setLastScanResult({ status: 'ERROR', message: 'MÜKERRER KAYIT! Bu kişi zaten listeye eklendi.' });
       }
       setTcInput('');
+      setIsScanning(false); // Hata durumunda scanning'i bitir
       return;
     }
 
@@ -370,6 +382,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     if (conflictError) {
       setLastScanResult({ status: 'ERROR', message: conflictError, citizen: { tc: trimmedTC, name: 'Çakışma', surname: 'Tespit Edildi', validityDate: '-' } });
       setTcInput('');
+      setIsScanning(false); // Hata durumunda scanning'i bitir
       return;
     }
 
@@ -384,6 +397,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
           message: `❌ ${activeCompanyName} şirketinin hedef sayısına ulaşıldı! (${companyCurrentCount}/${companyTarget})\n\nBu şirketten daha fazla kayıt yapılamaz.`
         });
         setTcInput('');
+        setIsScanning(false); // Hata durumunda scanning'i bitir
         return;
       }
     }
@@ -434,7 +448,14 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     onScan(newEntry);
     setLastScanResult({ status: status, message: message, citizen });
     setTcInput('');
-    inputRef.current?.focus();
+
+    // Okutma işlemini bitir
+    setIsScanning(false);
+
+    // Hedef sayıya ulaşılmadıysa input'a focus yap
+    if (scannedList.length + 1 < event.targetCount) {
+      inputRef.current?.focus();
+    }
   };
 
   const handleManualScan = (e: React.FormEvent) => {
@@ -443,10 +464,15 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Hedef sayıya ulaşıldıysa input değişikliğine izin verme
+    if (scannedList.length >= event.targetCount) {
+      return;
+    }
+
     const val = e.target.value.replace(/\D/g, '');
     setTcInput(val);
 
-    if (val.length === 11) {
+    if (val.length === 11 && !isScanning) {
       performScan(val);
     }
   };
@@ -816,15 +842,17 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
                 maxLength={11}
                 value={tcInput}
                 onChange={handleInputChange}
-                className="flex-1 bg-gray-700 dark:bg-gray-700 text-white text-sm sm:text-base font-mono placeholder-gray-400 border-none rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
+                disabled={scannedList.length >= event.targetCount || isScanning}
+                className="flex-1 bg-gray-700 dark:bg-gray-700 text-white text-sm sm:text-base font-mono placeholder-gray-400 border-none rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ backgroundColor: '#374151' }}
-                placeholder="11 haneli TC No"
+                placeholder={scannedList.length >= event.targetCount ? "Hedef sayıya ulaşıldı" : "11 haneli TC No"}
               />
               <button
                 type="submit"
-                className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-4 py-2 text-sm rounded-lg transition"
+                disabled={scannedList.length >= event.targetCount || isScanning || tcInput.length !== 11}
+                className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-4 py-2 text-sm rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Okut
+                {isScanning ? 'Okutluyor...' : 'Okut'}
               </button>
 
               {isAdmin && (
@@ -835,12 +863,14 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
                     hidden
                     accept=".xlsx, .xls, .csv"
                     onChange={handleFileUpload}
+                    disabled={scannedList.length >= event.targetCount}
                   />
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2 text-sm rounded-lg transition flex items-center gap-1.5"
-                    title="Excel Listesi Yükle"
+                    disabled={scannedList.length >= event.targetCount || isScanning}
+                    className="bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2 text-sm rounded-lg transition flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={scannedList.length >= event.targetCount ? "Hedef sayıya ulaşıldı" : "Excel Listesi Yükle"}
                   >
                     <Upload size={16} /> Excel Yükle
                   </button>
