@@ -1695,8 +1695,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* Modal: Scanned List Viewer */}
       {
         viewingEvent && (
-          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-            <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
+          <div
+            className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+            onClick={() => {
+              setViewingEvent(null);
+              setViewingCompanyFilter(null);
+            }}
+          >
+            <div
+              className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
               <div className="flex justify-between items-center p-6 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50 rounded-t-2xl">
                 <div className="flex-1">
                   <h2 className="text-xl font-bold text-gray-900 dark:text-white">{viewingEvent.name}</h2>
@@ -1774,14 +1783,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <div className="flex-1 overflow-auto p-0">
                 <table className="w-full text-center text-xs sm:text-sm">
-                  <thead className="bg-gray-50 dark:bg-gray-900/30 border-b border-gray-200 dark:border-gray-700 sticky top-0">
+                  <thead className="bg-gray-50 dark:bg-gray-900/30 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-10">
                     <tr>
                       <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">NO</th>
                       <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">TC</th>
                       <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">Ad Soyad</th>
-                      {viewingEvent.companies && viewingEvent.companies.length > 0 && (
-                        <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">Şirket</th>
-                      )}
                       <th className="hidden sm:table-cell px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">Durum</th>
                       <th className="hidden sm:table-cell px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">Saat</th>
                       <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">Kaydeden</th>
@@ -1802,11 +1808,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <td className="px-4 sm:px-6 py-3 text-gray-500 dark:text-gray-400 text-center">{index + 1}</td>
                             <td className="px-4 sm:px-6 py-3 font-mono text-gray-900 dark:text-gray-200 text-center">{entry.citizen.tc}</td>
                             <td className="px-4 sm:px-6 py-3 font-medium text-gray-900 dark:text-gray-200 text-center">{entry.citizen.name} {entry.citizen.surname}</td>
-                            {viewingEvent.companies && viewingEvent.companies.length > 0 && (
-                              <td className="px-4 sm:px-6 py-3 text-gray-600 dark:text-gray-300 font-medium text-center">
-                                {entry.companyName || '-'}
-                              </td>
-                            )}
                             <td className="hidden sm:table-cell px-6 py-3 text-center">
                               <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${status.bg} ${status.color}`}>
                                 {status.text}
