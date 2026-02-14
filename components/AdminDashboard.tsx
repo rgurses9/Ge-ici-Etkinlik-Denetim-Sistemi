@@ -1783,14 +1783,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <div className="flex-1 overflow-auto p-0">
                 <table className="w-full text-center text-xs sm:text-sm">
-                  <thead className="bg-gray-50 dark:bg-gray-900/30 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-10">
+                  <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-10">
                     <tr>
-                      <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">NO</th>
-                      <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">TC</th>
-                      <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">Ad Soyad</th>
-                      <th className="hidden sm:table-cell px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">Durum</th>
-                      <th className="hidden sm:table-cell px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">Saat</th>
-                      <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center">Kaydeden</th>
+                      <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center bg-gray-50 dark:bg-gray-900">NO</th>
+                      <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center bg-gray-50 dark:bg-gray-900">TC</th>
+                      <th className="px-4 sm:px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center bg-gray-50 dark:bg-gray-900">Ad Soyad</th>
+                      <th className="hidden sm:table-cell px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center bg-gray-50 dark:bg-gray-900">Durum</th>
+                      <th className="hidden sm:table-cell px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center bg-gray-50 dark:bg-gray-900">Saat</th>
+                      <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400 text-center bg-gray-50 dark:bg-gray-900">Kaydeden</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
