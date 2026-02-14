@@ -812,8 +812,13 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
             <UserIcon size={12} />
             {currentUser.username}
           </div>
-          <button onClick={onExit} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-            <X size={20} />
+          <button
+            type="button"
+            onClick={onExit}
+            className="p-2 -mr-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+            title="Kapat ve Çık"
+          >
+            <X size={24} />
           </button>
         </div>
       </div>
