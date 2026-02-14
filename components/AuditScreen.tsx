@@ -744,10 +744,19 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   const effectiveTarget = activeCompanyName
     ? (event.companies?.find(c => c.name === activeCompanyName)?.count || event.targetCount)
     : event.targetCount;
-  const progressPercentage = Math.min(100, Math.round((companyFilteredList.length / effectiveTarget) * 100));
+
+  // Use real count from event metadata instead of truncated list length
+  const displayCount = activeCompanyName
+    ? (event.companyCounts?.[activeCompanyName.replace(/\./g, '_')] || 0)
+    : (event.currentCount || 0);
+
+  const progressPercentage = effectiveTarget > 0
+    ? Math.min(100, Math.round((displayCount / effectiveTarget) * 100))
+    : 0;
 
   // Finish button requires TOTAL event target (all companies combined)
-  const isTargetReached = scannedList.length >= event.targetCount;
+  // Use event.currentCount which is the true total, distinct from loaded list length
+  const isTargetReached = (event.currentCount || 0) >= event.targetCount;
 
 
   if (showSummary) {
@@ -827,7 +836,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       <div className="bg-gray-100 dark:bg-gray-800 px-4 py-1.5 border-b border-gray-200 dark:border-gray-700">
         <div className="flex justify-between text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mb-1">
           <span>İlerleme</span>
-          <span>{companyFilteredList.length} / {effectiveTarget} (%{progressPercentage})</span>
+          <span>{displayCount} / {effectiveTarget} (%{progressPercentage})</span>
         </div>
         <div className="w-full bg-gray-300 dark:bg-gray-600 rounded-full h-2 overflow-hidden">
           <div
