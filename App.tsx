@@ -344,7 +344,7 @@ const App: React.FC = () => {
           collection(db, 'scanned_entries'),
           where('eventId', '==', activeEventId),
           orderBy('serverTimestamp', 'desc'),
-          limit(1500) // Büyük futbol maçları için (1200-1500 kişi)
+          limit(200) // OPTIMIZED: 1500'den 200'e düşürüldü (87% okuma azalması)
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -366,7 +366,7 @@ const App: React.FC = () => {
 
                 return {
                   ...prev,
-                  [activeEventId]: [entry, ...existingList].slice(0, 1500)
+                  [activeEventId]: [entry, ...existingList].slice(0, 200)
                 };
               });
             } else if (change.type === 'modified') {
