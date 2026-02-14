@@ -24,6 +24,15 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
 
   const [isChecking, setIsChecking] = useState(false);
 
+  // Cache Clear State - Kullanıcı daha önce cache temizlediyse gösterme
+  const [showCacheClearButton, setShowCacheClearButton] = useState(() => {
+    try {
+      return !localStorage.getItem('cache_cleared_v1');
+    } catch {
+      return true;
+    }
+  });
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -108,6 +117,36 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
     }
   };
 
+  // Cache Temizleme Fonksiyonu
+  const handleClearCache = () => {
+    if (confirm('Tüm önbellek ve çerezler temizlenecek. Devam etmek istiyor musunuz?\n\nNot: Bu işlem sonrası sayfa yenilenecektir.')) {
+      try {
+        // LocalStorage'ı tamamen temizle
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key) keysToRemove.push(key);
+        }
+        keysToRemove.forEach(key => localStorage.removeItem(key));
+
+        // Cache temizlendi işaretini koy (bu kalmalı)
+        localStorage.setItem('cache_cleared_v1', 'true');
+
+        // Butonu gizle
+        setShowCacheClearButton(false);
+
+        // Kullanıcıya bilgi ver
+        alert('✅ Önbellek başarıyla temizlendi!\n\nSayfa yenilenecek...');
+
+        // Sayfayı yenile
+        window.location.reload();
+      } catch (error) {
+        console.error('Cache temizleme hatası:', error);
+        alert('❌ Önbellek temizlenirken bir hata oluştu. Lütfen tarayıcınızın ayarlarından manuel olarak temizleyin.');
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4 transition-colors duration-200">
 
@@ -150,6 +189,22 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
         </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
+          {/* Cache Temizleme Uyarısı */}
+          {showCacheClearButton && (
+            <div className="p-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-xl">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="text-orange-600 dark:text-orange-400 shrink-0 mt-0.5" size={20} />
+                <div className="text-sm">
+                  <p className="font-bold text-orange-800 dark:text-orange-300 mb-1">Önbellek Temizliği Gerekli</p>
+                  <p className="text-orange-700 dark:text-orange-400 text-xs">
+                    Sistem güncellemesi nedeniyle, giriş yapmadan önce önbelleğinizi temizlemeniz gerekmektedir.
+                    Lütfen aşağıdaki "Önbelleği Temizle" butonuna tıklayın.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kullanıcı Adı</label>
             <div className="relative">
@@ -160,7 +215,8 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="block w-full pl-10 pr-3 py-3 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white dark:placeholder-gray-400"
+                disabled={showCacheClearButton}
+                className="block w-full pl-10 pr-3 py-3 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white dark:placeholder-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
                 placeholder="Kullanıcı adınızı girin"
                 required
               />
@@ -177,14 +233,16 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="block w-full pl-10 pr-10 py-3 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white dark:placeholder-gray-400"
+                disabled={showCacheClearButton}
+                className="block w-full pl-10 pr-10 py-3 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white dark:placeholder-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
                 placeholder="Şifrenizi girin"
                 required
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                disabled={showCacheClearButton}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
               </button>
@@ -200,8 +258,8 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
           {loginType === 'USER' ? (
             <button
               type="submit"
-              disabled={isChecking}
-              className={`w-full bg-primary-600 hover:bg-primary-700 text-white font-semibold py-3 px-4 rounded-xl transition duration-200 flex items-center justify-center gap-2 ${isChecking ? 'opacity-70 cursor-wait' : ''}`}
+              disabled={isChecking || showCacheClearButton}
+              className={`w-full bg-primary-600 hover:bg-primary-700 text-white font-semibold py-3 px-4 rounded-xl transition duration-200 flex items-center justify-center gap-2 ${(isChecking || showCacheClearButton) ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               {isChecking ? (
                 <>
@@ -218,8 +276,8 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
           ) : (
             <button
               type="submit"
-              disabled={isChecking}
-              className={`w-full bg-secondary-600 hover:bg-secondary-500 text-white font-semibold py-3 px-4 rounded-xl transition duration-200 flex items-center justify-center gap-2 ${isChecking ? 'opacity-70 cursor-wait' : ''}`}
+              disabled={isChecking || showCacheClearButton}
+              className={`w-full bg-secondary-600 hover:bg-secondary-500 text-white font-semibold py-3 px-4 rounded-xl transition duration-200 flex items-center justify-center gap-2 ${(isChecking || showCacheClearButton) ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               {isChecking ? (
                 <>
@@ -259,6 +317,16 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
           >
             {isRefreshing ? '🔄 Yenileniyor...' : '❓ Giriş yapamıyor musunuz? Tıklayın'}
           </button>
+
+          {showCacheClearButton && (
+            <button
+              type="button"
+              onClick={handleClearCache}
+              className="text-xs text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300 underline font-medium flex items-center gap-1.5 transition-colors"
+            >
+              🗑️ Önbelleği Temizle (Sorun Yaşıyorsanız)
+            </button>
+          )}
         </div>
       </div>
 
