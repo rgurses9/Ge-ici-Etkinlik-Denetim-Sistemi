@@ -23,6 +23,7 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const [isChecking, setIsChecking] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // Cache Clear State - Kullanıcı daha önce cache temizlediyse gösterme
   const [showCacheClearButton, setShowCacheClearButton] = useState(() => {
@@ -117,33 +118,39 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
     }
   };
 
-  // Cache Temizleme Fonksiyonu
+  // Cache Temizleme Fonksiyonları
   const handleClearCache = () => {
-    if (confirm('Tüm önbellek ve çerezler temizlenecek. Devam etmek istiyor musunuz?\n\nNot: Bu işlem sonrası sayfa yenilenecektir.')) {
-      try {
-        // LocalStorage'ı tamamen temizle
-        const keysToRemove = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key) keysToRemove.push(key);
-        }
-        keysToRemove.forEach(key => localStorage.removeItem(key));
+    setShowClearConfirm(true);
+  };
 
-        // Cache temizlendi işaretini koy (bu kalmalı)
-        localStorage.setItem('cache_cleared_v1', 'true');
-
-        // Butonu gizle
-        setShowCacheClearButton(false);
-
-        // Kullanıcıya bilgi ver
-        alert('✅ Önbellek başarıyla temizlendi!\n\nSayfa yenilenecek...');
-
-        // Sayfayı yenile
-        window.location.reload();
-      } catch (error) {
-        console.error('Cache temizleme hatası:', error);
-        alert('❌ Önbellek temizlenirken bir hata oluştu. Lütfen tarayıcınızın ayarlarından manuel olarak temizleyin.');
+  const executeClearCache = () => {
+    try {
+      // LocalStorage'ı tamamen temizle
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key) keysToRemove.push(key);
       }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+
+      // Cache temizlendi işaretini koy (bu kalmalı)
+      localStorage.setItem('cache_cleared_v1', 'true');
+
+      // Butonu gizle
+      setShowCacheClearButton(false);
+      setShowClearConfirm(false);
+
+      // Kullanıcıya bilgi ver ve sayfayı yenile
+      // alert yerine setTimeout ile yenileme yapalım ki modal kapanabilsin
+      setTimeout(() => {
+        alert('✅ Önbellek başarıyla temizlendi!\n\nSayfa yenilenecek...');
+        window.location.reload();
+      }, 100);
+
+    } catch (error) {
+      console.error('Cache temizleme hatası:', error);
+      alert('❌ Önbellek temizlenirken bir hata oluştu. Lütfen tarayıcınızın ayarlarından manuel olarak temizleyin.');
+      setShowClearConfirm(false);
     }
   };
 
@@ -329,6 +336,42 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
           )}
         </div>
       </div>
+
+      {/* Clear Cache Confirmation Modal */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm shadow-xl border border-gray-100 dark:border-gray-700">
+            <div className="flex items-start gap-4 mb-6">
+              <div className="bg-orange-100 dark:bg-orange-900/30 p-3 rounded-full shrink-0">
+                <AlertCircle className="text-orange-600 dark:text-orange-400" size={24} />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Önbellek Temizlensin mi?</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Tüm önbellek ve çerezler temizlenecek ve sayfa yenilenecektir. Devam etmek istiyor musunuz?
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowClearConfirm(false)}
+                className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-sm font-medium"
+              >
+                İptal
+              </button>
+              <button
+                type="button"
+                onClick={executeClearCache}
+                className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors text-sm font-medium shadow-sm hover:shadow-md"
+              >
+                Evet, Temizle
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* User Manual Modal */}
       {showManual && (
