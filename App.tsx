@@ -628,7 +628,14 @@ const App: React.FC = () => {
 
       newEntries.forEach(entry => {
         const ref = doc(db, 'scanned_entries', entry.id);
-        batch.set(ref, entry);
+
+        // FIX: Remove undefined fields to prevent Firestore error
+        const cleanEntry: any = { ...entry };
+        if (cleanEntry.companyName === undefined) {
+          delete cleanEntry.companyName;
+        }
+
+        batch.set(ref, cleanEntry);
       });
 
       const event = events.find(e => e.id === eventId);
