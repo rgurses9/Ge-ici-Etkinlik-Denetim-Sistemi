@@ -938,6 +938,7 @@ const App: React.FC = () => {
       onUpdateEvent={handleUpdateEvent}
       onRefreshPassiveData={refreshPassiveData}
       onSyncEvent={handleSyncEventData}
+      onRefreshEvents={refetchPassiveEvents}
       isDarkMode={isDarkMode}
       onToggleTheme={toggleTheme}
     />

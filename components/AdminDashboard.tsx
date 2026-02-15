@@ -21,6 +21,7 @@ interface AdminDashboardProps {
   onUpdateEvent: (event: Event) => void;
   onRefreshPassiveData: (eventIds: string[]) => Promise<void>;
   onSyncEvent: (eventId: string, silent?: boolean) => Promise<void>;
+  onRefreshEvents?: () => Promise<any> | void;
   isDarkMode: boolean;
   onToggleTheme: () => void;
 }
@@ -41,6 +42,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onUpdateEvent,
   onRefreshPassiveData,
   onSyncEvent,
+  onRefreshEvents,
   isDarkMode,
   onToggleTheme
 }) => {
@@ -1074,6 +1076,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           icon.classList.add('animate-spin');
                           setTimeout(() => icon.classList.remove('animate-spin'), 1000);
                         }
+                        if (onRefreshEvents) onRefreshEvents();
                         onRefreshPassiveData(recentPassiveEvents.map(e => e.id));
                       }}
                       className="px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition flex items-center gap-2 shadow-sm"
