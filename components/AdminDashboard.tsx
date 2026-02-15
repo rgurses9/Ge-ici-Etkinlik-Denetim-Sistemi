@@ -528,33 +528,48 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // Revised logic:
-  // Continuing = Active + Count > 0
-  const continuingEvents = events.filter(e => e.status === 'ACTIVE' && e.currentCount > 0);
-  // Pending = Active + Count == 0 (This replaces the main list)
-  const pendingEvents = events.filter(e => e.status === 'ACTIVE' && e.currentCount === 0);
-  // We use pendingEvents for the main "Active Audits" list now
-  const activeEvents = pendingEvents;
-  // --- Passive Events Logic ---
-  const allPassiveEvents = events.filter(e => e.status === 'PASSIVE')
-    .sort((a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime());
+  // Revised logic with Memoization:
+  const { continuingEvents, pendingEvents, activeEvents, groupedPassiveEvents, recentPassiveEvents } = useMemo(() => {
+    // Continuing = Active + Count > 0
+    const continuing = events.filter(e => e.status === 'ACTIVE' && e.currentCount > 0);
+    // Pending = Active + Count == 0
+    const pending = events.filter(e => e.status === 'ACTIVE' && e.currentCount === 0);
 
-  const recentPassiveEvents = allPassiveEvents.slice(0, 35);
+    const allPassive = events.filter(e => e.status === 'PASSIVE')
+      .sort((a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime());
 
-  // Group by "Month Year" (e.g., "Şubat 2026")
-  const groupedPassiveEvents = allPassiveEvents.reduce((acc, event) => {
-    const date = new Date(event.endDate);
-    // Capitalize first letter of month
-    const monthName = date.toLocaleString('tr-TR', { month: 'long' });
-    const formattedMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
-    const year = date.getFullYear();
-    const key = `${formattedMonth} ${year} `;
+    // Group by "Month Year" (e.g., "Şubat 2026")
+    const grouped = allPassive.reduce((acc, event) => {
+      const date = new Date(event.endDate);
+      const monthName = date.toLocaleString('tr-TR', { month: 'long' });
+      const formattedMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+      const year = date.getFullYear();
+      const key = `${formattedMonth} ${year} `; // Space at end to ensure unique key?
 
-    if (!acc[key]) {
-      acc[key] = [];
+      if (!acc[key]) {
+        acc[key] = [];
+      }
+      acc[key].push(event);
+      return acc;
+    }, {} as Record<string, Event[]>);
+
+    return {
+      continuingEvents: continuing,
+      pendingEvents: pending,
+      activeEvents: pending,
+      groupedPassiveEvents: grouped,
+      recentPassiveEvents: allPassive.slice(0, 35)
+    };
+  }, [events]);
+
+  // Auto-expand the most recent month for passive events
+  useEffect(() => {
+    const months = Object.keys(groupedPassiveEvents);
+    if (months.length > 0) {
+      const firstMonth = months[0];
+      setExpandedMonths(prev => prev.includes(firstMonth) ? prev : [...prev, firstMonth]);
     }
-    acc[key].push(event);
-    return acc;
-  }, {} as Record<string, Event[]>);
+  }, [groupedPassiveEvents]);
 
   const toggleMonth = (month: string) => {
     setExpandedMonths(prev =>
@@ -612,7 +627,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-6">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-6 flex flex-col">
 
         {/* Actions Bar */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
@@ -681,7 +696,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {activeTab === 'EVENTS' ? (
           <>
             {/* Active Event List */}
-            <div className="space-y-2">
+            <div className={`space-y-2 order-2 ${continuingEvents.length > 0 ? 'mt-10 pt-8 border-t border-gray-200 dark:border-gray-800' : ''}`}>
               {activeEvents.map((event) => {
                 const isLate = new Date(event.startDate) < new Date();
                 const textColor = isLate ? 'text-red-500 dark:text-red-400' : 'text-gray-900 dark:text-white';
@@ -817,7 +832,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {/* Continuing Audits Section */}
             {
               continuingEvents.length > 0 && (
-                <div className="mt-10 pt-8 border-t border-gray-200 dark:border-gray-800">
+                <div className="order-1 mb-8">
                   <div className="flex items-center gap-2 mb-4">
                     <Activity className="text-blue-600 dark:text-blue-400" size={20} />
                     <h3 className="text-lg font-bold text-gray-800 dark:text-white">Devam Eden Denetimler ({continuingEvents.length})</h3>
