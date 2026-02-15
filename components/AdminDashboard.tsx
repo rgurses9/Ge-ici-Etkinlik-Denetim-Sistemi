@@ -701,10 +701,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <>
             {/* Active Event List */}
             <div className={`space-y-2 order-2 ${continuingEvents.length > 0 ? 'mt-10 pt-8 border-t border-gray-200 dark:border-gray-800' : ''}`}>
-              {continuingEvents.length > 0 && activeEvents.length > 0 && (
+              {activeEvents.length > 0 && (
                 <div className="flex items-center gap-2 mb-4">
                   <Calendar className="text-gray-500 dark:text-gray-400" size={20} />
-                  <h3 className="text-lg font-bold text-gray-800 dark:text-white">Veri Girişi Yapılmamış Denetimler ({activeEvents.length})</h3>
+                  <h3 className="text-lg font-bold text-gray-800 dark:text-white">Aktif Denetimler ({activeEvents.length})</h3>
                 </div>
               )}
               {activeEvents.map((event) => {
