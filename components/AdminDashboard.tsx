@@ -561,7 +561,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       pendingEvents: pending,
       activeEvents: pending,
       groupedPassiveEvents: grouped,
-      recentPassiveEvents: allPassive.slice(0, 35),
+      recentPassiveEvents: allPassive.slice(0, 100),
       allPassiveEvents: allPassive
     };
   }, [events]);

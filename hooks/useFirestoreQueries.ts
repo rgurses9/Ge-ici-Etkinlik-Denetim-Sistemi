@@ -9,7 +9,8 @@ import {
     doc,
     setDoc,
     updateDoc,
-    deleteDoc
+    deleteDoc,
+    getDocsFromServer
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { User, Event } from '../types';
@@ -179,21 +180,47 @@ export const usePassiveEvents = (enabled: boolean = true) => {
     return useQuery({
         queryKey: ['events', 'passive'],
         queryFn: async () => {
-            console.log('🔄 Passive events sorgusu çalışıyor...');
+            console.log('🔄 Passive events sorgusu çalışıyor (Sunucu Odaklı)...');
             const q = query(
                 collection(db, 'events'),
                 where('status', '==', 'PASSIVE'),
                 orderBy('startDate', 'asc')
             );
-            const snapshot = await getDocs(q);
-            const events: Event[] = snapshot.docs.map(doc => doc.data() as Event);
 
-            // LocalStorage'a kaydet
-            if (events.length > 0) {
-                localStorage.setItem('geds_passive_events_cache', JSON.stringify(events));
+            try {
+                // Öncelik: Sunucudan en güncel veriyi al (Cache bypass)
+                const snapshot = await getDocsFromServer(q);
+                const events: Event[] = snapshot.docs.map(doc => doc.data() as Event);
+
+                // LocalStorage'a kaydet
+                if (events.length > 0) {
+                    localStorage.setItem('geds_passive_events_cache', JSON.stringify(events));
+                }
+                return events;
+
+            } catch (error) {
+                console.warn("⚠️ Sunucudan veri çekilemedi, cache deneniyor...", error);
+
+                // Fallback: Sunucu hatası varsa (özellikle offline mod) cache'e bak
+                try {
+                    const cachedSnapshot = await getDocsFromCache(q);
+                    if (!cachedSnapshot.empty) {
+                        return cachedSnapshot.docs.map(doc => doc.data() as Event);
+                    }
+                } catch (cacheError) {
+                    console.error("❌ Cache okuma hatası:", cacheError);
+                }
+
+                // Son çare: LocalStorage
+                const localCache = localStorage.getItem('geds_passive_events_cache');
+                if (localCache) {
+                    try {
+                        return JSON.parse(localCache);
+                    } catch (e) { }
+                }
+
+                throw error; // Her şey başarısız olursa error fırlat
             }
-
-            return events;
         },
         staleTime: 2 * 60 * 60 * 1000, // 2 saat - pasif etkinlikler nadiren değişir
         gcTime: 4 * 60 * 60 * 1000, // 4 saat cache'de tut
