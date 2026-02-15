@@ -706,7 +706,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {activeTab === 'EVENTS' ? (
           <>
             {/* Active Event List */}
-            <div className={`space-y-2 order-2 ${continuingEvents.length > 0 ? 'mt-10 pt-8 border-t border-gray-200 dark:border-gray-800' : ''}`}>
+            <div className="space-y-2 order-1">
               {activeEvents.map((event) => {
                 const isLate = new Date(event.startDate) < new Date();
                 const textColor = isLate ? 'text-red-500 dark:text-red-400' : 'text-gray-900 dark:text-white';
@@ -842,7 +842,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {/* Continuing Audits Section */}
             {
               continuingEvents.length > 0 && (
-                <div className="order-1 mb-8">
+                <div className="order-2 mt-10 pt-8 border-t border-gray-200 dark:border-gray-800">
                   <div className="flex items-center gap-2 mb-4">
                     <Activity className="text-blue-600 dark:text-blue-400" size={20} />
                     <h3 className="text-lg font-bold text-gray-800 dark:text-white">Devam Eden Denetimler ({continuingEvents.length})</h3>
