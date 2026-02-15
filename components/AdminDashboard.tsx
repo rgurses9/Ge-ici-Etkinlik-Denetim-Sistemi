@@ -636,7 +636,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-extrabold text-gray-800 dark:text-white tracking-tight">
-                {activeTab === 'EVENTS' ? `Aktif Denetimler (${activeEvents.length})` : 'Sistem Kullanıcıları'}
+                {activeTab === 'EVENTS' ? `Aktif Denetimler (${activeEvents.length + continuingEvents.length})` : 'Sistem Kullanıcıları'}
               </h2>
             </div>
           </div>
@@ -699,6 +699,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <>
             {/* Active Event List */}
             <div className={`space-y-2 order-2 ${continuingEvents.length > 0 ? 'mt-10 pt-8 border-t border-gray-200 dark:border-gray-800' : ''}`}>
+              {continuingEvents.length > 0 && activeEvents.length > 0 && (
+                <div className="flex items-center gap-2 mb-4">
+                  <Calendar className="text-gray-500 dark:text-gray-400" size={20} />
+                  <h3 className="text-lg font-bold text-gray-800 dark:text-white">Veri Girişi Yapılmamış Denetimler ({activeEvents.length})</h3>
+                </div>
+              )}
               {activeEvents.map((event) => {
                 const isLate = new Date(event.startDate) < new Date();
                 const textColor = isLate ? 'text-red-500 dark:text-red-400' : 'text-gray-900 dark:text-white';
