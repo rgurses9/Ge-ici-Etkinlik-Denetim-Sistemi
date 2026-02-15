@@ -69,7 +69,7 @@ const App: React.FC = () => {
 
   // Passive Events - TanStack Query ile yönetiliyor (2 saat cache)
   // Sadece authenticated kullanıcılar için aktif
-  const { data: passiveEvents = [] } = usePassiveEvents(!!session.isAuthenticated);
+  const { data: passiveEvents = [], refetch: refetchPassiveEvents } = usePassiveEvents(!!session.isAuthenticated);
 
   const [events, setEvents] = useState<Event[]>([]);
   const [scannedEntries, setScannedEntries] = useState<Record<string, ScanEntry[]>>({});
@@ -562,6 +562,9 @@ const App: React.FC = () => {
         });
         setActiveEventId(null);
         setActiveCompanyName(null);
+
+        // 3. Pasif listeyi güncelle (önemli: listener sadece active dinlediği için passiveEvents refetch edilmeli)
+        refetchPassiveEvents();
       } catch (e) {
         console.error("Error finishing audit: ", e);
       }
