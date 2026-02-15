@@ -637,9 +637,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-extrabold text-gray-800 dark:text-white tracking-tight">
-                {activeTab === 'EVENTS' ? `Aktif Denetimler (${activeEvents.length + continuingEvents.length})` : 'Sistem Kullanıcıları'}
-              </h2>
+              {activeTab === 'USERS' && (
+                <h2 className="text-lg font-extrabold text-gray-800 dark:text-white tracking-tight">
+                  Sistem Kullanıcıları
+                </h2>
+              )}
             </div>
           </div>
           <div className="flex flex-wrap gap-2 w-full sm:w-auto">
