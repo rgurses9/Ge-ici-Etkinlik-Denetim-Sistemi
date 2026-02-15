@@ -1055,7 +1055,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {/* Passive Events Section - Only Visible to Admins */}
             {
               isAdmin && Object.keys(groupedPassiveEvents).length > 0 && (
-                <div className="mt-10">
+                <div className="mt-10 order-3">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
                       <Archive className="text-gray-500 dark:text-gray-400" size={20} />
