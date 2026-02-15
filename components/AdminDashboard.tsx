@@ -529,7 +529,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Revised logic:
   // Revised logic with Memoization:
-  const { continuingEvents, pendingEvents, activeEvents, groupedPassiveEvents, recentPassiveEvents } = useMemo(() => {
+  // Revised logic with Memoization:
+  const { continuingEvents, pendingEvents, activeEvents, groupedPassiveEvents, recentPassiveEvents, allPassiveEvents } = useMemo(() => {
     // Continuing = Active + Count > 0
     const continuing = events.filter(e => e.status === 'ACTIVE' && e.currentCount > 0);
     // Pending = Active + Count == 0
@@ -558,7 +559,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       pendingEvents: pending,
       activeEvents: pending,
       groupedPassiveEvents: grouped,
-      recentPassiveEvents: allPassive.slice(0, 35)
+      recentPassiveEvents: allPassive.slice(0, 35),
+      allPassiveEvents: allPassive
     };
   }, [events]);
 
