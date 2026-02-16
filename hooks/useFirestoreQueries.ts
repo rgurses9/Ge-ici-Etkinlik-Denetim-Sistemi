@@ -183,14 +183,16 @@ export const usePassiveEvents = (enabled: boolean = true) => {
         queryKey: ['events', 'passive'],
         queryFn: async () => {
             console.log('🔄 Passive events sorgusu çalışıyor (Son 35)...');
-            const q = query(
-                collection(db, 'events'),
-                where('status', '==', 'PASSIVE'),
-                orderBy('startDate', 'asc'), // Eski index ile uyumlu olması için ASC
-                limitToLast(35) // Sondan 35 tanesini al (En yeniler)
-            );
 
             try {
+                // 1. Yol: Optimize Sorgu (limitToLast)
+                const q = query(
+                    collection(db, 'events'),
+                    where('status', '==', 'PASSIVE'),
+                    orderBy('startDate', 'asc'), // Eski index ile uyumlu olması için ASC
+                    limitToLast(35) // Sondan 35 tanesini al (En yeniler)
+                );
+
                 // Öncelik: Sunucudan en güncel veriyi al (Cache bypass)
                 const snapshot = await getDocsFromServer(q);
                 const events: Event[] = snapshot.docs.map(doc => doc.data() as Event);
@@ -202,27 +204,44 @@ export const usePassiveEvents = (enabled: boolean = true) => {
                 return events;
 
             } catch (error) {
-                console.warn("⚠️ Sunucudan veri çekilemedi, cache deneniyor...", error);
+                console.warn("⚠️ Sunucudan optimize veri çekilemedi (index sorunu olabilir), tüm veri çekiliyor...", error);
 
-                // Fallback: Sunucu hatası varsa (özellikle offline mod) cache'e bak
+                // Fallback: Index sorunu varsa TÜM pasif verileri çekip client-side filtrele
                 try {
-                    const cachedSnapshot = await getDocsFromCache(q);
-                    if (!cachedSnapshot.empty) {
-                        return cachedSnapshot.docs.map(doc => doc.data() as Event);
+                    const fallbackQ = query(
+                        collection(db, 'events'),
+                        where('status', '==', 'PASSIVE'),
+                        orderBy('startDate', 'asc') // Eski çalışan sorgu
+                    );
+
+                    const snapshot = await getDocsFromServer(fallbackQ);
+                    const allEvents: Event[] = snapshot.docs.map(doc => doc.data() as Event);
+
+                    // Client-side slice: Son 35 tanesini al
+                    const events = allEvents.slice(-35);
+
+                    // LocalStorage'a kaydet
+                    if (events.length > 0) {
+                        localStorage.setItem('geds_passive_events_cache_v3', JSON.stringify(events));
                     }
-                } catch (cacheError) {
-                    console.error("❌ Cache okuma hatası:", cacheError);
-                }
+                    return events;
 
-                // Son çare: LocalStorage
-                const localCache = localStorage.getItem('geds_passive_events_cache_v3');
-                if (localCache) {
-                    try {
-                        return JSON.parse(localCache);
-                    } catch (e) { }
-                }
+                } catch (fallbackError) {
+                    console.error("❌ Fallback de başarısız:", fallbackError);
 
-                throw error; // Her şey başarısız olursa error fırlat
+                    // Son çare: LocalStorage (v3 yoksa v2, yoksa v1 dene)
+                    const localCache = localStorage.getItem('geds_passive_events_cache_v3') ||
+                        localStorage.getItem('geds_passive_events_cache_v2') ||
+                        localStorage.getItem('geds_passive_events_cache');
+
+                    if (localCache) {
+                        try {
+                            return JSON.parse(localCache);
+                        } catch (e) { }
+                    }
+
+                    throw fallbackError;
+                }
             }
         },
         staleTime: 2 * 60 * 60 * 1000, // 2 saat - pasif etkinlikler nadiren değişir
