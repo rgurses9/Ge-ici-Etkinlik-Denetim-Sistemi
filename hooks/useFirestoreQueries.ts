@@ -185,12 +185,11 @@ export const usePassiveEvents = (enabled: boolean = true) => {
             console.log('🔄 Passive events sorgusu çalışıyor (Son 35)...');
 
             try {
-                // 1. Yol: Optimize Sorgu (limitToLast)
+                // 1. Yol: Optimize Sorgu (Tüm Pasif Etkinlikler)
                 const q = query(
                     collection(db, 'events'),
                     where('status', '==', 'PASSIVE'),
-                    orderBy('startDate', 'asc'), // Eski index ile uyumlu olması için ASC
-                    limitToLast(35) // Sondan 35 tanesini al (En yeniler)
+                    orderBy('startDate', 'asc') // Eski index ile uyumlu olması için ASC
                 );
 
                 // Öncelik: Sunucudan en güncel veriyi al (Cache bypass)
@@ -199,7 +198,7 @@ export const usePassiveEvents = (enabled: boolean = true) => {
 
                 // LocalStorage'a kaydet
                 if (events.length > 0) {
-                    localStorage.setItem('geds_passive_events_cache_v3', JSON.stringify(events));
+                    localStorage.setItem('geds_passive_events_cache_all', JSON.stringify(events));
                 }
                 return events;
 
@@ -212,7 +211,7 @@ export const usePassiveEvents = (enabled: boolean = true) => {
                     const fallbackQ = query(
                         collection(db, 'events'),
                         where('status', '==', 'PASSIVE')
-                        // OrderBy kaldırıldı - Client side sıralama yapılacak (Index hatasını önlemek için)
+                        // OrderBy kaldırıldı - Client side sıralama yapılacak
                     );
 
                     const snapshot = await getDocsFromServer(fallbackQ);
@@ -225,22 +224,22 @@ export const usePassiveEvents = (enabled: boolean = true) => {
                         return dateB - dateA;
                     });
 
-                    // Client-side slice: İlk 35 tanesini al (Zaten yeniye göre sıraladık)
-                    const events = allEvents.slice(0, 35);
+                    // TÜM etkinlikleri döndür (Limit yok)
+                    const events = allEvents;
 
                     // LocalStorage'a kaydet
                     if (events.length > 0) {
-                        localStorage.setItem('geds_passive_events_cache_v3', JSON.stringify(events));
+                        localStorage.setItem('geds_passive_events_cache_all', JSON.stringify(events));
                     }
                     return events;
 
                 } catch (fallbackError) {
                     console.error("❌ Fallback de başarısız:", fallbackError);
 
-                    // Son çare: LocalStorage (v3 yoksa v2, yoksa v1 dene)
-                    const localCache = localStorage.getItem('geds_passive_events_cache_v3') ||
-                        localStorage.getItem('geds_passive_events_cache_v2') ||
-                        localStorage.getItem('geds_passive_events_cache');
+                    // Son çare: LocalStorage (all yoksa v3, yoksa v2 dene)
+                    const localCache = localStorage.getItem('geds_passive_events_cache_all') ||
+                        localStorage.getItem('geds_passive_events_cache_v3') ||
+                        localStorage.getItem('geds_passive_events_cache_v2');
 
                     if (localCache) {
                         try {
@@ -256,7 +255,7 @@ export const usePassiveEvents = (enabled: boolean = true) => {
         gcTime: 4 * 60 * 60 * 1000, // 4 saat cache'de tut
         enabled, // Sadece gerektiğinde çalıştır
         initialData: () => {
-            const cached = localStorage.getItem('geds_passive_events_cache_v3');
+            const cached = localStorage.getItem('geds_passive_events_cache_all');
             if (cached) {
                 try {
                     return JSON.parse(cached);
