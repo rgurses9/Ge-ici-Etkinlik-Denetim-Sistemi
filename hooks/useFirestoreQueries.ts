@@ -11,7 +11,8 @@ import {
     updateDoc,
     deleteDoc,
     getDocsFromServer,
-    limit
+    limit,
+    limitToLast
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { User, Event } from '../types';
@@ -185,8 +186,8 @@ export const usePassiveEvents = (enabled: boolean = true) => {
             const q = query(
                 collection(db, 'events'),
                 where('status', '==', 'PASSIVE'),
-                orderBy('startDate', 'desc'), // En yeniler önce
-                limit(35) // Sadece son 35 etkinlik
+                orderBy('startDate', 'asc'), // Eski index ile uyumlu olması için ASC
+                limitToLast(35) // Sondan 35 tanesini al (En yeniler)
             );
 
             try {
@@ -196,7 +197,7 @@ export const usePassiveEvents = (enabled: boolean = true) => {
 
                 // LocalStorage'a kaydet
                 if (events.length > 0) {
-                    localStorage.setItem('geds_passive_events_cache_v2', JSON.stringify(events));
+                    localStorage.setItem('geds_passive_events_cache_v3', JSON.stringify(events));
                 }
                 return events;
 
@@ -214,7 +215,7 @@ export const usePassiveEvents = (enabled: boolean = true) => {
                 }
 
                 // Son çare: LocalStorage
-                const localCache = localStorage.getItem('geds_passive_events_cache_v2');
+                const localCache = localStorage.getItem('geds_passive_events_cache_v3');
                 if (localCache) {
                     try {
                         return JSON.parse(localCache);
@@ -228,7 +229,7 @@ export const usePassiveEvents = (enabled: boolean = true) => {
         gcTime: 4 * 60 * 60 * 1000, // 4 saat cache'de tut
         enabled, // Sadece gerektiğinde çalıştır
         initialData: () => {
-            const cached = localStorage.getItem('geds_passive_events_cache_v2');
+            const cached = localStorage.getItem('geds_passive_events_cache_v3');
             if (cached) {
                 try {
                     return JSON.parse(cached);
