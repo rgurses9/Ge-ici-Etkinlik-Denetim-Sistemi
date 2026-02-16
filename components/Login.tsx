@@ -118,22 +118,19 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
     }
   };
 
-  // Cache Temizleme Fonksiyonları
-  const handleClearCache = () => {
+  // Çerez Temizleme Fonksiyonları
+  const handleClearCookies = () => {
     setShowClearConfirm(true);
   };
 
-  const executeClearCache = () => {
+  const executeClearCookies = () => {
     try {
-      // LocalStorage'ı tamamen temizle
-      const keysToRemove = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key) keysToRemove.push(key);
-      }
-      keysToRemove.forEach(key => localStorage.removeItem(key));
+      // Çerezleri temizle
+      document.cookie.split(";").forEach((c) => {
+        document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+      });
 
-      // Cache temizlendi işaretini koy (bu kalmalı)
+      // Cache temizlendi işaretini koy (bu kalmalı - uyarıyı gizlemek için)
       localStorage.setItem('cache_cleared_v1', 'true');
 
       // Butonu gizle
@@ -141,15 +138,14 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
       setShowClearConfirm(false);
 
       // Kullanıcıya bilgi ver ve sayfayı yenile
-      // alert yerine setTimeout ile yenileme yapalım ki modal kapanabilsin
       setTimeout(() => {
-        alert('✅ Önbellek başarıyla temizlendi!\n\nSayfa yenilenecek...');
+        alert('✅ Çerezler başarıyla silindi!\n\nSayfa yenilenecek...');
         window.location.reload();
       }, 100);
 
     } catch (error) {
-      console.error('Cache temizleme hatası:', error);
-      alert('❌ Önbellek temizlenirken bir hata oluştu. Lütfen tarayıcınızın ayarlarından manuel olarak temizleyin.');
+      console.error('Çerez temizleme hatası:', error);
+      alert('❌ Çerezler silinirken bir hata oluştu. Lütfen tarayıcınızın ayarlarından manuel olarak silin.');
       setShowClearConfirm(false);
     }
   };
@@ -196,16 +192,16 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
         </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
-          {/* Cache Temizleme Uyarısı */}
+          {/* Çerez Temizleme Uyarısı */}
           {showCacheClearButton && (
             <div className="p-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-xl">
               <div className="flex items-start gap-3">
                 <AlertCircle className="text-orange-600 dark:text-orange-400 shrink-0 mt-0.5" size={20} />
                 <div className="text-sm">
-                  <p className="font-bold text-orange-800 dark:text-orange-300 mb-1">Önbellek Temizliği Gerekli</p>
+                  <p className="font-bold text-orange-800 dark:text-orange-300 mb-1">Çerez Temizliği Gerekli</p>
                   <p className="text-orange-700 dark:text-orange-400 text-xs">
-                    Sistem güncellemesi nedeniyle, giriş yapmadan önce önbelleğinizi temizlemeniz gerekmektedir.
-                    Lütfen aşağıdaki "Önbelleği Temizle" butonuna tıklayın.
+                    Sistem güncellemesi nedeniyle, giriş yapmadan önce çerezlerinizi silmeniz gerekmektedir.
+                    Lütfen aşağıdaki "Çerezleri Sil" butonuna tıklayın.
                   </p>
                 </div>
               </div>
@@ -328,16 +324,16 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
           {showCacheClearButton && (
             <button
               type="button"
-              onClick={handleClearCache}
+              onClick={handleClearCookies}
               className="text-xs text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300 underline font-medium flex items-center gap-1.5 transition-colors"
             >
-              🗑️ Önbelleği Temizle (Sorun Yaşıyorsanız)
+              🗑️ Çerezleri Sil (Sorun Yaşıyorsanız)
             </button>
           )}
         </div>
       </div>
 
-      {/* Clear Cache Confirmation Modal */}
+      {/* Clear Cookies Confirmation Modal */}
       {showClearConfirm && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm shadow-xl border border-gray-100 dark:border-gray-700">
@@ -346,9 +342,9 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
                 <AlertCircle className="text-orange-600 dark:text-orange-400" size={24} />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Önbellek Temizlensin mi?</h3>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Çerezler Silinsin mi?</h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Tüm önbellek ve çerezler temizlenecek ve sayfa yenilenecektir. Devam etmek istiyor musunuz?
+                  Giriş sorunlarını gidermek için çerezler silinecek ve sayfa yenilenecektir. Devam etmek istiyor musunuz?
                 </p>
               </div>
             </div>
@@ -363,15 +359,16 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
               </button>
               <button
                 type="button"
-                onClick={executeClearCache}
+                onClick={executeClearCookies}
                 className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors text-sm font-medium shadow-sm hover:shadow-md"
               >
-                Evet, Temizle
+                Evet, Sil
               </button>
             </div>
           </div>
         </div>
       )}
+
 
       {/* User Manual Modal */}
       {showManual && (
