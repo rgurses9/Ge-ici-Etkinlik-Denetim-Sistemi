@@ -208,17 +208,25 @@ export const usePassiveEvents = (enabled: boolean = true) => {
 
                 // Fallback: Index sorunu varsa TÜM pasif verileri çekip client-side filtrele
                 try {
+                    // Index gerektirmeyen en basit sorgu: Sadece status kontrolü
                     const fallbackQ = query(
                         collection(db, 'events'),
-                        where('status', '==', 'PASSIVE'),
-                        orderBy('startDate', 'asc') // Eski çalışan sorgu
+                        where('status', '==', 'PASSIVE')
+                        // OrderBy kaldırıldı - Client side sıralama yapılacak (Index hatasını önlemek için)
                     );
 
                     const snapshot = await getDocsFromServer(fallbackQ);
-                    const allEvents: Event[] = snapshot.docs.map(doc => doc.data() as Event);
+                    let allEvents: Event[] = snapshot.docs.map(doc => doc.data() as Event);
 
-                    // Client-side slice: Son 35 tanesini al
-                    const events = allEvents.slice(-35);
+                    // Client-side sıralama (En yeniler önce)
+                    allEvents.sort((a, b) => {
+                        const dateA = new Date(a.startDate).getTime();
+                        const dateB = new Date(b.startDate).getTime();
+                        return dateB - dateA;
+                    });
+
+                    // Client-side slice: İlk 35 tanesini al (Zaten yeniye göre sıraladık)
+                    const events = allEvents.slice(0, 35);
 
                     // LocalStorage'a kaydet
                     if (events.length > 0) {
