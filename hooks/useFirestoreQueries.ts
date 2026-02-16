@@ -10,7 +10,8 @@ import {
     setDoc,
     updateDoc,
     deleteDoc,
-    getDocsFromServer
+    getDocsFromServer,
+    limit
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { User, Event } from '../types';
@@ -180,11 +181,12 @@ export const usePassiveEvents = (enabled: boolean = true) => {
     return useQuery({
         queryKey: ['events', 'passive'],
         queryFn: async () => {
-            console.log('🔄 Passive events sorgusu çalışıyor (Sunucu Odaklı)...');
+            console.log('🔄 Passive events sorgusu çalışıyor (Son 35)...');
             const q = query(
                 collection(db, 'events'),
                 where('status', '==', 'PASSIVE'),
-                orderBy('startDate', 'asc')
+                orderBy('startDate', 'desc'), // En yeniler önce
+                limit(35) // Sadece son 35 etkinlik
             );
 
             try {
@@ -194,7 +196,7 @@ export const usePassiveEvents = (enabled: boolean = true) => {
 
                 // LocalStorage'a kaydet
                 if (events.length > 0) {
-                    localStorage.setItem('geds_passive_events_cache', JSON.stringify(events));
+                    localStorage.setItem('geds_passive_events_cache_v2', JSON.stringify(events));
                 }
                 return events;
 
@@ -212,7 +214,7 @@ export const usePassiveEvents = (enabled: boolean = true) => {
                 }
 
                 // Son çare: LocalStorage
-                const localCache = localStorage.getItem('geds_passive_events_cache');
+                const localCache = localStorage.getItem('geds_passive_events_cache_v2');
                 if (localCache) {
                     try {
                         return JSON.parse(localCache);
@@ -226,7 +228,7 @@ export const usePassiveEvents = (enabled: boolean = true) => {
         gcTime: 4 * 60 * 60 * 1000, // 4 saat cache'de tut
         enabled, // Sadece gerektiğinde çalıştır
         initialData: () => {
-            const cached = localStorage.getItem('geds_passive_events_cache');
+            const cached = localStorage.getItem('geds_passive_events_cache_v2');
             if (cached) {
                 try {
                     return JSON.parse(cached);
