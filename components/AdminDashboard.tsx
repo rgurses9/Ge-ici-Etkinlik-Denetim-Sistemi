@@ -1183,12 +1183,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                             </button>
                                             <button
                                               onClick={() => {
-                                                if (confirm(`"${event.name}" etkinliğini devam eden denetimlere geri döndürmek istediğinize emin misiniz?`)) {
+                                                if (confirm(`"${event.name}" etkinliğini devam eden denetimlere iade etmek istediğinize emin misiniz?`)) {
                                                   onReactivateEvent(event.id);
                                                 }
                                               }}
                                               className="p-1.5 text-orange-400 hover:text-orange-600 dark:text-orange-300 dark:hover:text-orange-200 transition"
-                                              title="Devam Edenlere Geri Döndür"
+                                              title="İade Et"
                                             >
                                               <RotateCcw size={16} />
                                             </button>
