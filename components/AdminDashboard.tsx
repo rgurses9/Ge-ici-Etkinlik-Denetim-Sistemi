@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Event, User, UserRole, ScanEntry, CompanyTarget } from '../types';
-import { Plus, Users, Calendar, Play, LogOut, Eye, Trash2, Edit, UserCog, Key, ShieldCheck, User as UserIcon, Activity, Archive, Download, RefreshCw, Clock, Wifi, X, CheckCircle, Sun, Moon, Folder, ChevronDown, ChevronUp, AlertTriangle, AlertCircle, Upload } from 'lucide-react';
+import { Plus, Users, Calendar, Play, LogOut, Eye, Trash2, Edit, UserCog, Key, ShieldCheck, User as UserIcon, Activity, Archive, Download, RefreshCw, Clock, Wifi, X, CheckCircle, Sun, Moon, Folder, ChevronDown, ChevronUp, AlertTriangle, AlertCircle, Upload, RotateCcw } from 'lucide-react';
 
 
 
@@ -1183,19 +1183,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                             </button>
                                             <button
                                               onClick={() => {
-                                                // Reuse the refresh logic for single event? Or just reload all.
-                                                // For now, reload all.
-                                                const icon = document.getElementById('refresh-icon-spin');
-                                                if (icon) {
-                                                  icon.classList.add('animate-spin');
-                                                  setTimeout(() => icon.classList.remove('animate-spin'), 1000);
+                                                if (confirm(`"${event.name}" etkinliğini devam eden denetimlere geri döndürmek istediğinize emin misiniz?`)) {
+                                                  onReactivateEvent(event.id);
                                                 }
-                                                onRefreshPassiveData(recentPassiveEvents.map(e => e.id));
                                               }}
-                                              className="p-1.5 text-blue-400 hover:text-blue-600 dark:text-blue-300 dark:hover:text-blue-200 transition"
-                                              title="Verileri Yenile"
+                                              className="p-1.5 text-orange-400 hover:text-orange-600 dark:text-orange-300 dark:hover:text-orange-200 transition"
+                                              title="Devam Edenlere Geri Döndür"
                                             >
-                                              <RefreshCw size={16} />
+                                              <RotateCcw size={16} />
                                             </button>
                                           </>
                                         )}
