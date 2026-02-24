@@ -10,6 +10,7 @@ export interface User {
   password?: string; // In a real app, never store plain text
   roles: UserRole[];
   fullName: string;
+  lastActive?: number; // Added for tracking online presence
 }
 
 export interface Event {

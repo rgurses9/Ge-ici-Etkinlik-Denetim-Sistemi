@@ -445,6 +445,32 @@ const App: React.FC = () => {
     }
   }, [scannedEntries]);
 
+  // --- Presence Tracking ---
+  useEffect(() => {
+    if (session.isAuthenticated && session.currentUser) {
+      const userRef = doc(db, 'users', session.currentUser.id);
+
+      const updatePresence = () => {
+        updateDoc(userRef, { lastActive: Date.now() }).catch(() => { });
+      };
+
+      updatePresence(); // Giriş yapıldığında anında güncelle
+      const intervalId = setInterval(updatePresence, 60000); // Her 1 dakikada bir güncelle
+
+      const handleUnload = () => {
+        updateDoc(userRef, { lastActive: 0 }).catch(() => { });
+      };
+
+      window.addEventListener('beforeunload', handleUnload);
+
+      return () => {
+        clearInterval(intervalId);
+        window.removeEventListener('beforeunload', handleUnload);
+        updateDoc(userRef, { lastActive: 0 }).catch(() => { });
+      };
+    }
+  }, [session.isAuthenticated, session.currentUser]);
+
   // --- Handlers ---
 
   const handleLogin = (user: User) => {

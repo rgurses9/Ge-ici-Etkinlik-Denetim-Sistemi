@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, UserRole } from '../types';
 import { db } from '../firebase';
-import { collection, query, where, getDocs, getDocsFromCache } from 'firebase/firestore';
+import { collection, query, where, getDocs, getDocsFromCache, onSnapshot } from 'firebase/firestore';
 import { Lock, User as UserIcon, Settings, Eye, EyeOff, BookOpen, X, HelpCircle, AlertCircle, CheckCircle, Info, Sun, Moon } from 'lucide-react';
 
 interface LoginProps {
@@ -33,6 +33,34 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
       return true;
     }
   });
+
+  const [onlineCount, setOnlineCount] = useState<number>(0);
+
+  useEffect(() => {
+    const q = query(collection(db, 'users'));
+    let currentUsers: User[] = [];
+
+    const calculateOnlineCount = () => {
+      const now = Date.now();
+      // Son 2 dakika içinde active olanları online kabul et
+      const count = currentUsers.filter(u => u.lastActive && (now - u.lastActive < 2 * 60 * 1000)).length;
+      setOnlineCount(count);
+    };
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      currentUsers = snapshot.docs.map(doc => doc.data() as User);
+      calculateOnlineCount();
+    }, (err) => {
+      console.warn("Canlı kullanıcı bilgisi alınamadı", err);
+    });
+
+    const interval = setInterval(calculateOnlineCount, 30000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(interval);
+    };
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -298,9 +326,11 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, isDarkMode, onToggleTheme
         </form>
 
         <div className="mt-6 flex flex-col items-center gap-3">
-          <div className="text-xs text-green-600 dark:text-green-400 font-medium flex items-center justify-center gap-1">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-            Sistem Çevrimiçi
+          <div className="text-xs text-green-600 dark:text-green-400 font-medium flex-col flex items-center justify-center gap-1">
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+              Sistem Çevrimiçi {onlineCount > 0 && `(${onlineCount} Kullanıcı Aktif)`}
+            </div>
           </div>
 
           <button
