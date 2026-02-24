@@ -40,9 +40,27 @@ const getDocsCacheFirst = async (q: any) => {
   return getDocs(q);
 };
 
+const APP_VERSION = '1.0.1'; // Sürümü güncelleyerek tüm kullanıcılarda otomatik önbellek temizliği ve güncelleme tetikleyebilirsiniz
+
 const App: React.FC = () => {
   // --- Global State (önce tanımlanmalı) ---
   const [session, setSession] = useState<SessionState>(() => {
+    // Sürüm Kontrolü (Otomatik Güncelleme Mekanizması)
+    const storedVersion = localStorage.getItem('geds_app_version');
+    if (storedVersion !== APP_VERSION) {
+      console.warn(`Yeni sürüm tespit edildi! (${storedVersion} -> ${APP_VERSION}). Önbellekler temizleniyor...`);
+      localStorage.removeItem('geds_events_cache');
+      localStorage.removeItem('geds_scanned_entries_cache');
+      localStorage.removeItem('geds_worker_db_v3_compressed');
+      localStorage.removeItem('geds_worker_db_time_v3');
+      localStorage.setItem('geds_app_version', APP_VERSION);
+
+      // Cache'leri temizledikten sonra yeni verilerle başlatmak üzere sayfayı yeniliyoruz
+      if (typeof window !== 'undefined' && storedVersion !== null) {
+        window.location.reload();
+      }
+    }
+
     // Check localStorage for existing session
     const savedSession = localStorage.getItem('geds_session');
     if (savedSession) {

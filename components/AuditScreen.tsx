@@ -345,6 +345,12 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
     if (!trimmedTC) return;
 
+    // Veritabanı hazır olmadan izin verme
+    if (dbStatus !== 'READY') {
+      setLastScanResult({ status: 'ERROR', message: 'Veritabanı yükleniyor veya hata oluştu. Lütfen hazır olmasını bekleyin.' });
+      return;
+    }
+
     // Eğer zaten bir okutma işlemi devam ediyorsa, yeni okutmaya izin verme
     if (isScanning) {
       console.log('⚠️ Okutma işlemi devam ediyor, lütfen bekleyin...');
@@ -376,6 +382,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       }
       setTcInput('');
       setIsScanning(false); // Hata durumunda scanning'i bitir
+      setTimeout(() => inputRef.current?.focus(), 50);
       return;
     }
 
@@ -386,6 +393,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       setLastScanResult({ status: 'ERROR', message: conflictError, citizen: { tc: trimmedTC, name: 'Çakışma', surname: 'Tespit Edildi', validityDate: '-' } });
       setTcInput('');
       setIsScanning(false); // Hata durumunda scanning'i bitir
+      setTimeout(() => inputRef.current?.focus(), 50);
       return;
     }
 
@@ -457,7 +465,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
     // Hedef sayıya ulaşılmadıysa input'a focus yap
     if (scannedList.length + 1 < event.targetCount) {
-      inputRef.current?.focus();
+      setTimeout(() => inputRef.current?.focus(), 50);
     }
   };
 
@@ -481,6 +489,12 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (dbStatus !== 'READY') {
+      setLastScanResult({ status: 'ERROR', message: 'Veritabanı yükleniyor veya hata oluştu. Lütfen hazır olmasını bekleyin.' });
+      e.target.value = '';
+      return;
+    }
+
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -657,10 +671,21 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       // Çoklu şirketli etkinliklerde sadece seçili şirketin verilerini export et
       const dataToExport = allData.map(item => {
         const status = checkWorkStatus(item.citizen.validityDate);
+
+        let ad = item.citizen.name || '';
+        let soyad = item.citizen.surname || '';
+
+        // Eğer soyad yoksa ve ad boşluk içeriyorsa son kelimeyi soyad olarak ayır
+        if (!soyad && ad.trim().includes(' ')) {
+          const parts = ad.trim().split(/\s+/);
+          soyad = parts.pop() || '';
+          ad = parts.join(' ');
+        }
+
         return {
           "TC Kimlik No": item.citizen.tc,
-          "Ad": item.citizen.name,
-          "Soyad": item.citizen.surname,
+          "Ad": ad,
+          "Soyad": soyad,
           "Geçerlilik Tarihi": item.citizen.validityDate,
           "Durum": status.text,
           "Okutma Saati": item.timestamp,
@@ -710,10 +735,21 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       // TÜM kayıtları export et (şirket filtresi olmadan)
       const dataToExport = allData.map(item => {
         const status = checkWorkStatus(item.citizen.validityDate);
+
+        let ad = item.citizen.name || '';
+        let soyad = item.citizen.surname || '';
+
+        // Eğer soyad yoksa ve ad boşluk içeriyorsa son kelimeyi soyad olarak ayır
+        if (!soyad && ad.trim().includes(' ')) {
+          const parts = ad.trim().split(/\s+/);
+          soyad = parts.pop() || '';
+          ad = parts.join(' ');
+        }
+
         return {
           "TC Kimlik No": item.citizen.tc,
-          "Ad": item.citizen.name,
-          "Soyad": item.citizen.surname,
+          "Ad": ad,
+          "Soyad": soyad,
           "Geçerlilik Tarihi": item.citizen.validityDate,
           "Durum": status.text,
           "Okutma Saati": item.timestamp,
@@ -916,14 +952,14 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
                 maxLength={11}
                 value={tcInput}
                 onChange={handleInputChange}
-                disabled={scannedList.length >= event.targetCount || isScanning}
+                disabled={scannedList.length >= event.targetCount || isScanning || dbStatus !== 'READY'}
                 className="flex-1 bg-gray-700 dark:bg-gray-700 text-white text-sm sm:text-base font-mono placeholder-gray-400 border-none rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ backgroundColor: '#374151' }}
-                placeholder={scannedList.length >= event.targetCount ? "Hedef sayıya ulaşıldı" : "11 haneli TC No"}
+                placeholder={dbStatus !== 'READY' ? "Veritabanı bekleniyor..." : (scannedList.length >= event.targetCount ? "Hedef sayıya ulaşıldı" : "11 haneli TC No")}
               />
               <button
                 type="submit"
-                disabled={scannedList.length >= event.targetCount || isScanning || tcInput.length !== 11}
+                disabled={scannedList.length >= event.targetCount || isScanning || tcInput.length !== 11 || dbStatus !== 'READY'}
                 className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-4 py-2 text-sm rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isScanning ? 'Okutluyor...' : 'Okut'}
@@ -937,14 +973,14 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
                     hidden
                     accept=".xlsx, .xls, .csv"
                     onChange={handleFileUpload}
-                    disabled={scannedList.length >= event.targetCount}
+                    disabled={scannedList.length >= event.targetCount || dbStatus !== 'READY'}
                   />
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={scannedList.length >= event.targetCount || isScanning}
+                    disabled={scannedList.length >= event.targetCount || isScanning || dbStatus !== 'READY'}
                     className="bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2 text-sm rounded-lg transition flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title={scannedList.length >= event.targetCount ? "Hedef sayıya ulaşıldı" : "Excel Listesi Yükle"}
+                    title={dbStatus !== 'READY' ? "Veritabanı bekleniyor..." : (scannedList.length >= event.targetCount ? "Hedef sayıya ulaşıldı" : "Excel Listesi Yükle")}
                   >
                     <Upload size={16} /> Excel Yükle
                   </button>
