@@ -1924,7 +1924,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   const mergedEntries = Array.from(map.values());
                   const tempFilter = viewingCompanyFilter ? mergedEntries.filter(e => e.companyName === viewingCompanyFilter) : mergedEntries;
 
-                  if (isAdmin && targetCompanyCount > tempFilter.length) {
+                  if (targetCompanyCount > tempFilter.length) {
                     return (
                       <button
                         onClick={handleFetchAllDashboardScans}

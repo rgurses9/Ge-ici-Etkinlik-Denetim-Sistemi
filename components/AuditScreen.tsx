@@ -1022,7 +1022,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
         <div className="w-full flex justify-between items-center mb-2">
           <h3 className="font-bold text-gray-800 dark:text-gray-200 text-sm">Okutulan Kişiler</h3>
           <div className="flex gap-2">
-            {isAdmin && !isFullListLoaded && displayCount > companyFilteredList.length && (
+            {!isFullListLoaded && displayCount > companyFilteredList.length && (
               <button
                 onClick={handleFetchAllScans}
                 disabled={isLoadingAll}

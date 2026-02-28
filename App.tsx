@@ -358,11 +358,19 @@ const App: React.FC = () => {
         // 4. SADECE ACTIVE EVENT için real-time listener (OPTIMIZED)
         console.log(`📡 Setting up real-time listener for ACTIVE event only...`);
 
-        const q = query(
-          collection(db, 'scanned_entries'),
+        const qConstraints: any[] = [
           where('eventId', '==', activeEventId),
           orderBy('serverTimestamp', 'desc'),
           limit(200) // OPTIMIZED: 1500'den 200'e düşürüldü (87% okuma azalması)
+        ];
+
+        if (activeCompanyName) {
+          qConstraints.splice(1, 0, where('companyName', '==', activeCompanyName));
+        }
+
+        const q = query(
+          collection(db, 'scanned_entries'),
+          ...qConstraints
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -431,7 +439,7 @@ const App: React.FC = () => {
     return () => {
       cleanupPromise.then(cleanup => cleanup && cleanup());
     };
-  }, [session.isAuthenticated, activeEventId]);
+  }, [session.isAuthenticated, activeEventId, activeCompanyName]);
 
   // Auto-sync scanned entries to cache
   useEffect(() => {
