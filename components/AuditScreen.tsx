@@ -250,6 +250,12 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   const [isFullListLoaded, setIsFullListLoaded] = useState(false);
   const [isLoadingAll, setIsLoadingAll] = useState(false);
 
+  // Reset fetch states if activeCompanyName changes
+  useEffect(() => {
+    setIsFullListLoaded(false);
+    setFullScannedList([]);
+  }, [activeCompanyName]);
+
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -855,9 +861,14 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   };
 
   // Filter list by selected company for display
-  const companyFilteredList = activeCompanyName
+  const rawFilteredList = activeCompanyName
     ? mergedList.filter(s => s.companyName === activeCompanyName)
     : mergedList;
+
+  // Limit display to 200 items initially (per company), expanding only if "Tümünü Getir" is clicked
+  const companyFilteredList = isFullListLoaded
+    ? rawFilteredList
+    : rawFilteredList.slice(0, 200);
 
 
   if (showSummary) {
