@@ -246,11 +246,46 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   const [durationStr, setDurationStr] = useState('');
   const [isScanning, setIsScanning] = useState(false); // Mükerrer kayıt önleme için
   const [isExporting, setIsExporting] = useState(false);
+  const [fullScannedList, setFullScannedList] = useState<ScanEntry[]>([]);
+  const [isFullListLoaded, setIsFullListLoaded] = useState(false);
+  const [isLoadingAll, setIsLoadingAll] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isAdmin = currentUser.roles.includes(UserRole.ADMIN);
+
+  const handleFetchAllScans = async () => {
+    setIsLoadingAll(true);
+    try {
+      let q;
+      if (activeCompanyName) {
+        q = query(collection(db, 'scanned_entries'),
+          where('eventId', '==', event.id),
+          where('companyName', '==', activeCompanyName));
+      } else {
+        q = query(collection(db, 'scanned_entries'),
+          where('eventId', '==', event.id));
+      }
+      const snapshot = await getDocs(q);
+      const allData = snapshot.docs.map(doc => doc.data() as ScanEntry);
+      setFullScannedList(allData);
+      setIsFullListLoaded(true);
+    } catch (e) {
+      console.error(e);
+      alert('Tüm liste çekilemedi.');
+    } finally {
+      setIsLoadingAll(false);
+    }
+  };
+
+  const mergedList = React.useMemo(() => {
+    if (!isFullListLoaded) return scannedList;
+    const map = new Map<string, ScanEntry>();
+    fullScannedList.forEach(item => map.set(item.id, item));
+    scannedList.forEach(item => map.set(item.id, item));
+    return Array.from(map.values()).sort((a, b) => (b.serverTimestamp || 0) - (a.serverTimestamp || 0));
+  }, [scannedList, fullScannedList, isFullListLoaded]);
 
   // Focus input on mount
   useEffect(() => {
@@ -337,9 +372,20 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     loadData();
   }, []); // ← Boş dependency array: Sadece component mount'ta 1 kez çalışır
 
+  // Target computations
+  const effectiveTarget = activeCompanyName
+    ? (event.companies?.find(c => c.name === activeCompanyName)?.count || event.targetCount)
+    : event.targetCount;
 
+  const displayCount = activeCompanyName
+    ? (event.companyCounts?.[activeCompanyName.replace(/\./g, '_')] || 0)
+    : (event.currentCount || 0);
 
+  const progressPercentage = effectiveTarget > 0
+    ? Math.min(100, Math.round((displayCount / effectiveTarget) * 100))
+    : 0;
 
+  const isTargetReached = (event.currentCount || 0) >= event.targetCount;
   const performScan = async (tc: string) => {
     const trimmedTC = tc.trim();
 
@@ -363,7 +409,12 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     }
 
     // HEDEF SAYIYA ULAŞILDI MI KONTROLÜ - En başta kontrol et
-    if (scannedList.length >= event.targetCount) {
+    if (displayCount >= effectiveTarget) {
+      setLastScanResult({ status: 'ERROR', message: activeCompanyName ? `🚫 ${activeCompanyName} ŞİRKETİ İÇİN HEDEF SAYIYA ULAŞILDI! Daha fazla kayıt yapılamaz.` : '🚫 TOPLAM HEDEF SAYIYA ULAŞILDI! Daha fazla kayıt yapılamaz. Lütfen "Denetimi Bitir" butonuna basın.' });
+      setTcInput('');
+      return;
+    }
+    if ((event.currentCount || 0) >= event.targetCount) {
       setLastScanResult({ status: 'ERROR', message: '🚫 TOPLAM HEDEF SAYIYA ULAŞILDI! Daha fazla kayıt yapılamaz. Lütfen "Denetimi Bitir" butonuna basın.' });
       setTcInput('');
       return;
@@ -397,21 +448,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       return;
     }
 
-    // ŞİRKET HEDEF KONTROLÜ - Şirket hedefine ulaşıldıysa daha fazla okutmaya izin verme
-    if (activeCompanyName) {
-      const companyTarget = event.companies?.find(c => c.name === activeCompanyName)?.count || 0;
-      const companyCurrentCount = scannedList.filter(s => s.companyName === activeCompanyName).length;
-
-      if (companyCurrentCount >= companyTarget) {
-        setLastScanResult({
-          status: 'ERROR',
-          message: `❌ ${activeCompanyName} şirketinin hedef sayısına ulaşıldı! (${companyCurrentCount}/${companyTarget})\n\nBu şirketten daha fazla kayıt yapılamaz.`
-        });
-        setTcInput('');
-        setIsScanning(false); // Hata durumunda scanning'i bitir
-        return;
-      }
-    }
+    // ŞİRKET HEDEF KONTROLÜ (artık yukarıda yapılıyor)
 
     // DB Lookup
     let citizen = database.find(c => c.tc === trimmedTC);
@@ -434,15 +471,13 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
     // Bilgilendirme mesajları (hedef kontrolü yukarıda yapıldı)
     if (activeCompanyName) {
-      const companyTarget = event.companies?.find(c => c.name === activeCompanyName)?.count || 0;
-      const companyCurrentCount = scannedList.filter(s => s.companyName === activeCompanyName).length + 1;
-      if (companyCurrentCount >= companyTarget) {
-        message = `✅ ${activeCompanyName} şirketinin hedef sayısına ulaşıldı! (${companyCurrentCount}/${companyTarget})`;
+      if (displayCount + 1 >= effectiveTarget) {
+        message = `✅ ${activeCompanyName} şirketinin hedef sayısına ulaşıldı! (${displayCount + 1}/${effectiveTarget})`;
       }
     }
 
     // Check if we hit the total target with this scan
-    if (scannedList.length + 1 >= event.targetCount) {
+    if ((event.currentCount || 0) + 1 >= event.targetCount) {
       message = "🏁 TÜM ŞİRKETLERİN TOPLAM HEDEF SAYISINA ULAŞILDI! Lütfen 'Denetimi Bitir' butonuna basın.";
     }
 
@@ -464,7 +499,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     setIsScanning(false);
 
     // Hedef sayıya ulaşılmadıysa input'a focus yap
-    if (scannedList.length + 1 < event.targetCount) {
+    if (displayCount + 1 < effectiveTarget) {
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   };
@@ -476,7 +511,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     // Hedef sayıya ulaşıldıysa input değişikliğine izin verme
-    if (scannedList.length >= event.targetCount) {
+    if (displayCount >= effectiveTarget || (event.currentCount || 0) >= event.targetCount) {
       return;
     }
 
@@ -516,16 +551,6 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       let errorMsg = '';
 
       const currentTimestamp = new Date().toLocaleTimeString();
-      let currentScannedCount = scannedList.length;
-
-      // Şirket hedef kontrolü için mevcut şirket sayısını hesapla
-      const companyTarget = activeCompanyName
-        ? (event.companies?.find(c => c.name === activeCompanyName)?.count || 0)
-        : 0;
-      const companyCurrentCount = activeCompanyName
-        ? scannedList.filter(s => s.companyName === activeCompanyName).length
-        : 0;
-
       // Flatten data to get just TCs from first available column
       for (let i = 0; i < data.length; i++) {
         const row = data[i];
@@ -538,16 +563,16 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
         if (tc.length !== 11) continue;
 
-        if (currentScannedCount + newEntries.length >= event.targetCount) {
+        if ((event.currentCount || 0) + newEntries.length >= event.targetCount) {
           errorMsg = 'Toplam hedef limite ulaşıldı.';
           break;
         }
 
         // ŞİRKET HEDEF KONTROLÜ - Excel yüklemede de şirket hedefini kontrol et
-        if (activeCompanyName && companyTarget > 0) {
+        if (activeCompanyName && effectiveTarget > 0) {
           const companyEntriesInBatch = newEntries.filter(e => e.companyName === activeCompanyName).length;
-          if (companyCurrentCount + companyEntriesInBatch >= companyTarget) {
-            errorMsg = `${activeCompanyName} şirketinin hedef sayısına ulaşıldı (${companyTarget}).`;
+          if (displayCount + companyEntriesInBatch >= effectiveTarget) {
+            errorMsg = `${activeCompanyName} şirketinin hedef sayısına ulaşıldı (${effectiveTarget}).`;
             break;
           }
         }
@@ -622,8 +647,10 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
         onBulkScan(newEntries);
 
         let finalMessage = `${newEntries.length} kişi eklendi. ${failCount} kişi hatalı/çakışan veya mükerrer. ${errorMsg}`;
-        if (scannedList.length + newEntries.length >= event.targetCount) {
+        if ((event.currentCount || 0) + newEntries.length >= event.targetCount) {
           finalMessage = `🏁 HEDEF SAYIYA ULAŞILDI! ${newEntries.length} kişi eklendi. Lütfen 'Denetimi Bitir' butonuna basın.`;
+        } else if (activeCompanyName && displayCount + newEntries.length >= effectiveTarget) {
+          finalMessage = `🏁 ${activeCompanyName} ŞİRKETİ İÇİN HEDEF SAYIYA ULAŞILDI! ${newEntries.length} kişi eklendi.`;
         }
 
         setLastScanResult({
@@ -829,26 +856,8 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
   // Filter list by selected company for display
   const companyFilteredList = activeCompanyName
-    ? scannedList.filter(s => s.companyName === activeCompanyName)
-    : scannedList;
-
-  // Determine effective target for progress display (company-specific)
-  const effectiveTarget = activeCompanyName
-    ? (event.companies?.find(c => c.name === activeCompanyName)?.count || event.targetCount)
-    : event.targetCount;
-
-  // Use real count from event metadata instead of truncated list length
-  const displayCount = activeCompanyName
-    ? (event.companyCounts?.[activeCompanyName.replace(/\./g, '_')] || 0)
-    : (event.currentCount || 0);
-
-  const progressPercentage = effectiveTarget > 0
-    ? Math.min(100, Math.round((displayCount / effectiveTarget) * 100))
-    : 0;
-
-  // Finish button requires TOTAL event target (all companies combined)
-  // Use event.currentCount which is the true total, distinct from loaded list length
-  const isTargetReached = (event.currentCount || 0) >= event.targetCount;
+    ? mergedList.filter(s => s.companyName === activeCompanyName)
+    : mergedList;
 
 
   if (showSummary) {
@@ -952,14 +961,14 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
                 maxLength={11}
                 value={tcInput}
                 onChange={handleInputChange}
-                disabled={scannedList.length >= event.targetCount || isScanning || dbStatus !== 'READY'}
+                disabled={displayCount >= effectiveTarget || (event.currentCount || 0) >= event.targetCount || isScanning || dbStatus !== 'READY'}
                 className="flex-1 bg-gray-700 dark:bg-gray-700 text-white text-sm sm:text-base font-mono placeholder-gray-400 border-none rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ backgroundColor: '#374151' }}
-                placeholder={dbStatus !== 'READY' ? "Veritabanı bekleniyor..." : (scannedList.length >= event.targetCount ? "Hedef sayıya ulaşıldı" : "11 haneli TC No")}
+                placeholder={dbStatus !== 'READY' ? "Veritabanı bekleniyor..." : (displayCount >= effectiveTarget || (event.currentCount || 0) >= event.targetCount ? "Hedef sayıya ulaşıldı" : "11 haneli TC No")}
               />
               <button
                 type="submit"
-                disabled={scannedList.length >= event.targetCount || isScanning || tcInput.length !== 11 || dbStatus !== 'READY'}
+                disabled={displayCount >= effectiveTarget || (event.currentCount || 0) >= event.targetCount || isScanning || tcInput.length !== 11 || dbStatus !== 'READY'}
                 className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-4 py-2 text-sm rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isScanning ? 'Okutluyor...' : 'Okut'}
@@ -973,14 +982,14 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
                     hidden
                     accept=".xlsx, .xls, .csv"
                     onChange={handleFileUpload}
-                    disabled={scannedList.length >= event.targetCount || dbStatus !== 'READY'}
+                    disabled={displayCount >= effectiveTarget || (event.currentCount || 0) >= event.targetCount || dbStatus !== 'READY'}
                   />
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={scannedList.length >= event.targetCount || isScanning || dbStatus !== 'READY'}
+                    disabled={displayCount >= effectiveTarget || (event.currentCount || 0) >= event.targetCount || isScanning || dbStatus !== 'READY'}
                     className="bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2 text-sm rounded-lg transition flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title={dbStatus !== 'READY' ? "Veritabanı bekleniyor..." : (scannedList.length >= event.targetCount ? "Hedef sayıya ulaşıldı" : "Excel Listesi Yükle")}
+                    title={dbStatus !== 'READY' ? "Veritabanı bekleniyor..." : (displayCount >= effectiveTarget || (event.currentCount || 0) >= event.targetCount ? "Hedef sayıya ulaşıldı" : "Excel Listesi Yükle")}
                   >
                     <Upload size={16} /> Excel Yükle
                   </button>
@@ -1013,6 +1022,16 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
         <div className="w-full flex justify-between items-center mb-2">
           <h3 className="font-bold text-gray-800 dark:text-gray-200 text-sm">Okutulan Kişiler</h3>
           <div className="flex gap-2">
+            {isAdmin && !isFullListLoaded && displayCount > companyFilteredList.length && (
+              <button
+                onClick={handleFetchAllScans}
+                disabled={isLoadingAll}
+                className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isLoadingAll ? <Loader2 size={14} className="animate-spin" /> : <Database size={14} />}
+                {isLoadingAll ? 'Yükleniyor...' : 'Tümünü Getir'}
+              </button>
+            )}
             <button
               onClick={exportToExcel}
               disabled={companyFilteredList.length === 0 || isExporting}

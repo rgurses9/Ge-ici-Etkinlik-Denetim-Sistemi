@@ -1,7 +1,9 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Event, User, UserRole, ScanEntry, CompanyTarget } from '../types';
-import { Plus, Users, Calendar, Play, LogOut, Eye, Trash2, Edit, UserCog, Key, ShieldCheck, User as UserIcon, Activity, Archive, Download, RefreshCw, Clock, Wifi, X, CheckCircle, Sun, Moon, Folder, ChevronDown, ChevronUp, AlertTriangle, AlertCircle, Upload, RotateCcw } from 'lucide-react';
+import { Plus, Users, Calendar, Play, LogOut, Eye, Trash2, Edit, UserCog, Key, ShieldCheck, User as UserIcon, Activity, Archive, Download, RefreshCw, Clock, Wifi, X, CheckCircle, Sun, Moon, Folder, ChevronDown, ChevronUp, AlertTriangle, AlertCircle, Upload, RotateCcw, Loader2, Database } from 'lucide-react';
+import { db } from '../firebase';
+import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 
 
 
@@ -51,6 +53,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [viewingEvent, setViewingEvent] = useState<Event | null>(null);
   const [viewingCompanyFilter, setViewingCompanyFilter] = useState<string | null>(null);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
+  const [fullScannedList, setFullScannedList] = useState<ScanEntry[]>([]);
+  const [isLoadingAll, setIsLoadingAll] = useState(false);
+
+  useEffect(() => {
+    if (!viewingEvent) {
+      setFullScannedList([]);
+    }
+  }, [viewingEvent]);
 
   // Company Selection State
   const [companySelectEvent, setCompanySelectEvent] = useState<Event | null>(null);
@@ -104,6 +114,36 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [newUserRoles, setNewUserRoles] = useState<UserRole[]>([UserRole.PERSONNEL]);
 
   const isAdmin = currentUser.roles.includes(UserRole.ADMIN);
+
+  const handleFetchAllDashboardScans = async () => {
+    if (!viewingEvent) return;
+    setIsLoadingAll(true);
+    try {
+      let q;
+      if (viewingCompanyFilter) {
+        q = query(collection(db, 'scanned_entries'),
+          where('eventId', '==', viewingEvent.id),
+          where('companyName', '==', viewingCompanyFilter));
+      } else {
+        q = query(collection(db, 'scanned_entries'),
+          where('eventId', '==', viewingEvent.id));
+      }
+      const snapshot = await getDocs(q);
+      const fetchedData = snapshot.docs.map(doc => doc.data() as ScanEntry);
+
+      setFullScannedList(prev => {
+        const map = new Map<string, ScanEntry>();
+        prev.forEach(item => map.set(item.id, item));
+        fetchedData.forEach(item => map.set(item.id, item));
+        return Array.from(map.values());
+      });
+    } catch (e) {
+      console.error(e);
+      alert('Kayıtlar çekilirken hata oluştu.');
+    } finally {
+      setIsLoadingAll(false);
+    }
+  };
 
   // --- Handlers ---
 
@@ -464,10 +504,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!viewingEvent) return;
     const allEntries = scannedEntries[viewingEvent.id] || [];
 
+    const map = new Map<string, ScanEntry>();
+    allEntries.forEach(item => map.set(item.id, item));
+    fullScannedList.forEach(item => { if (item.eventId === viewingEvent.id) map.set(item.id, item); });
+    const mergedEntries = Array.from(map.values()).sort((a, b) => (b.serverTimestamp || 0) - (a.serverTimestamp || 0));
+
     // Şirket filtresine göre verileri filtrele
     const entries = viewingCompanyFilter
-      ? allEntries.filter(e => e.companyName === viewingCompanyFilter)
-      : allEntries;
+      ? mergedEntries.filter(e => e.companyName === viewingCompanyFilter)
+      : mergedEntries;
 
     const XLSX = await import('xlsx');
 
@@ -1767,7 +1812,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   {/* Uncertain Stats */}
                   {(() => {
                     const currentEntries = scannedEntries[viewingEvent.id] || [];
-                    const uncertainCount = currentEntries.filter(e => e?.citizen?.name === 'Veri Tabanında' && e?.citizen?.surname === 'Bulunamadı').length;
+                    const map = new Map<string, ScanEntry>();
+                    currentEntries.forEach(item => map.set(item.id, item));
+                    fullScannedList.forEach(item => { if (item.eventId === viewingEvent.id) map.set(item.id, item); });
+                    const mergedEntries = Array.from(map.values());
+                    const filteredForStats = viewingCompanyFilter ? mergedEntries.filter(e => e.companyName === viewingCompanyFilter) : mergedEntries;
+                    const uncertainCount = filteredForStats.filter(e => e?.citizen?.name === 'Veri Tabanında' && e?.citizen?.surname === 'Bulunamadı').length;
 
                     if (uncertainCount > 0) {
                       return (
@@ -1784,7 +1834,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   {/* User Stats */}
                   {(() => {
                     const currentEntries = scannedEntries[viewingEvent.id] || [];
-                    const userStats = currentEntries.reduce((acc, entry) => {
+                    const map = new Map<string, ScanEntry>();
+                    currentEntries.forEach(item => map.set(item.id, item));
+                    fullScannedList.forEach(item => { if (item.eventId === viewingEvent.id) map.set(item.id, item); });
+                    const mergedEntries = Array.from(map.values());
+                    const filteredForStats = viewingCompanyFilter ? mergedEntries.filter(e => e.companyName === viewingCompanyFilter) : mergedEntries;
+
+                    const userStats = filteredForStats.reduce((acc, entry) => {
                       if (!entry) return acc;
                       const user = entry.recordedBy || 'Bilinmiyor';
                       acc[user] = (acc[user] || 0) + 1;
@@ -1817,9 +1873,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                     {(() => {
                       const allEntries = scannedEntries[viewingEvent.id] || [];
+                      const map = new Map<string, ScanEntry>();
+                      allEntries.forEach(item => map.set(item.id, item));
+                      fullScannedList.forEach(item => { if (item.eventId === viewingEvent.id) map.set(item.id, item); });
+                      const mergedEntries = Array.from(map.values()).sort((a, b) => (b.serverTimestamp || 0) - (a.serverTimestamp || 0));
+
                       const filteredEntries = viewingCompanyFilter
-                        ? allEntries.filter(e => e.companyName === viewingCompanyFilter)
-                        : allEntries;
+                        ? mergedEntries.filter(e => e.companyName === viewingCompanyFilter)
+                        : mergedEntries;
 
                       return filteredEntries.map((entry, index) => {
                         if (!entry || !entry.citizen) return null;
@@ -1851,7 +1912,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </table>
               </div>
 
-              <div className="p-6 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50 rounded-b-2xl flex justify-end">
+              <div className="p-6 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50 rounded-b-2xl flex justify-end gap-3">
+                {(() => {
+                  const targetCompanyCount = viewingCompanyFilter
+                    ? viewingEvent.companyCounts?.[viewingCompanyFilter.replace(/\./g, '_')] || 0
+                    : viewingEvent.currentCount || 0;
+
+                  const map = new Map<string, ScanEntry>();
+                  (scannedEntries[viewingEvent.id] || []).forEach(item => map.set(item.id, item));
+                  fullScannedList.forEach(item => { if (item.eventId === viewingEvent.id) map.set(item.id, item); });
+                  const mergedEntries = Array.from(map.values());
+                  const tempFilter = viewingCompanyFilter ? mergedEntries.filter(e => e.companyName === viewingCompanyFilter) : mergedEntries;
+
+                  if (isAdmin && targetCompanyCount > tempFilter.length) {
+                    return (
+                      <button
+                        onClick={handleFetchAllDashboardScans}
+                        disabled={isLoadingAll}
+                        className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-xl transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isLoadingAll ? <Loader2 size={18} className="animate-spin" /> : <Database size={18} />}
+                        Tümünü Getir
+                      </button>
+                    );
+                  }
+                  return null;
+                })()}
                 <button
                   onClick={handleExportExcel}
                   disabled={!scannedEntries[viewingEvent.id] || scannedEntries[viewingEvent.id].length === 0}
