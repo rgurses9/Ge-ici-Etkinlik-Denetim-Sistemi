@@ -244,8 +244,12 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   const [database, setDatabase] = useState<Citizen[]>(MOCK_CITIZEN_DB);
   const [dbStatus, setDbStatus] = useState<'LOADING' | 'READY' | 'ERROR'>('ERROR');
   const [startTime] = useState(Date.now());
-  const [showSummary, setShowSummary] = useState(false);
-  const [durationStr, setDurationStr] = useState('');
+  const [showSummary, setShowSummary] = useState(() => {
+    return localStorage.getItem('geds_show_summary_for') === event.id;
+  });
+  const [durationStr, setDurationStr] = useState(() => {
+    return localStorage.getItem('geds_summary_duration') || '';
+  });
   const [isScanning, setIsScanning] = useState(false); // Mükerrer kayıt önleme için
   const [isExporting, setIsExporting] = useState(false);
   const [fullScannedList, setFullScannedList] = useState<ScanEntry[]>([]);
@@ -810,14 +814,6 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   };
 
   const handleFinishAudit = async () => {
-    // Çoklu şirketli etkinliklerde TÜM şirketlerin verilerini export et
-    if (event.companies && event.companies.length > 0) {
-      await exportAllCompaniesToExcel();
-    } else {
-      // Tek şirketli veya şirketsiz etkinliklerde normal export
-      await exportToExcel();
-    }
-
     const diff = Date.now() - startTime;
     const hours = Math.floor(diff / 3600000);
     const minutes = Math.floor((diff % 3600000) / 60000);
@@ -834,8 +830,25 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       onMarkPassive(formattedDuration);
     }
 
+    // LocalStorage'a kaydet (iOS PWA indirme sırasında sayfayı yenilerse durumu kaybetmemek için)
+    localStorage.setItem('geds_show_summary_for', event.id);
+    localStorage.setItem('geds_summary_duration', formattedDuration);
+
     setDurationStr(formattedDuration);
     setShowSummary(true);
+
+    // İndirme işlemi sayfa yenilenmesini tetikleyebileceği için en son çalıştır
+    if (event.companies && event.companies.length > 0) {
+      await exportAllCompaniesToExcel();
+    } else {
+      await exportToExcel();
+    }
+  };
+
+  const handleGoDashboard = () => {
+    localStorage.removeItem('geds_show_summary_for');
+    localStorage.removeItem('geds_summary_duration');
+    onFinish(durationStr);
   };
 
   const checkWorkStatus = (dateStr: string) => {
@@ -901,7 +914,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
           </div>
 
           <button
-            onClick={() => onFinish(durationStr)}
+            onClick={handleGoDashboard}
             className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-3.5 px-6 rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2"
           >
             Ana Ekrana Dön
