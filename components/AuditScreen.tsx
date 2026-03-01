@@ -880,33 +880,35 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
   if (showSummary) {
     return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl text-center">
-          <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center mx-auto mb-4">
-            <CheckCircle size={32} />
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-4 transition-colors duration-200">
+        <div className="bg-white dark:bg-gray-800 rounded-3xl w-full max-w-md p-8 shadow-xl text-center border border-gray-100 dark:border-gray-700">
+          <div className="w-20 h-20 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center mx-auto mb-6">
+            <CheckCircle size={40} />
           </div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Denetleme Tamamlandı</h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-6">Etkinlik denetimi başarıyla sonlandırıldı ve Excel dosyası indirildi.</p>
+          <h2 className="text-2xl font-extrabold text-gray-900 dark:text-white mb-3">Denetleme Tamamlandı</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-8">
+            Etkinlik denetimi başarıyla sonlandırıldı ve kişi listesi Excel formatında cihazınıza indirildi.
+          </p>
 
-          <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 mb-6">
-            <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 flex items-center justify-center gap-1">
-              <Clock size={12} />
-              Tamamlama Süresi
+          <div className="bg-gray-50 dark:bg-gray-700/50 rounded-2xl p-5 mb-8 border border-gray-100 dark:border-gray-600">
+            <div className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2 flex items-center justify-center gap-1.5">
+              <Clock size={16} />
+              Denetleme Süresi
             </div>
-            <div className="text-2xl font-mono font-bold text-gray-800 dark:text-white">
+            <div className="text-4xl font-mono font-black text-gray-800 dark:text-white tracking-tight">
               {durationStr}
             </div>
           </div>
 
           <button
             onClick={() => onFinish(durationStr)}
-            className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-2.5 px-6 rounded-xl transition text-sm"
+            className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-3.5 px-6 rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2"
           >
             Ana Ekrana Dön
           </button>
         </div>
       </div>
-    )
+    );
   }
 
   return (
