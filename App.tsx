@@ -132,6 +132,7 @@ const App: React.FC = () => {
   const [activeCompanyName, setActiveCompanyName] = useState<string | null>(() => {
     return localStorage.getItem('geds_active_company_name');
   });
+  const activeEventCache = useRef<Event | null>(null);
 
   // Persist activeEventId changes
   useEffect(() => {
@@ -948,8 +949,20 @@ const App: React.FC = () => {
   }
 
   if (activeEventId) {
-    const activeEvent = events.find(e => e.id === activeEventId);
-    if (!activeEvent) return <div>Hata: Etkinlik bulunamadı veya silindi.</div>;
+    let activeEvent = events.find(e => e.id === activeEventId);
+    if (activeEvent) {
+      activeEventCache.current = activeEvent;
+    } else if (activeEventCache.current && activeEventCache.current.id === activeEventId) {
+      activeEvent = activeEventCache.current;
+    }
+
+    if (!activeEvent) {
+      return (
+        <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white p-4">
+          Hata: Etkinlik bulunamadı veya silindi.
+        </div>
+      );
+    }
 
     const currentList = scannedEntries[activeEventId] || [];
 
