@@ -210,6 +210,7 @@ interface AuditScreenProps {
   currentUser: User;
   onExit: () => void;
   onFinish: (duration: string) => void;
+  onMarkPassive?: (duration: string) => void;
   onScan: (entry: ScanEntry) => void; // This calls Firestore write
   onBulkScan: (entries: ScanEntry[]) => void;
   onDelete: (entry: ScanEntry) => void;
@@ -227,6 +228,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   currentUser,
   onExit,
   onFinish,
+  onMarkPassive,
   onScan,
   onBulkScan,
   onDelete,
@@ -826,6 +828,11 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       minutes.toString().padStart(2, '0'),
       seconds.toString().padStart(2, '0')
     ].join(':');
+
+    // Sunucuyu hemen güncelle, kullanıcı sekmeyi kapatsa bile etkinlik passiive'e geçsin
+    if (onMarkPassive) {
+      onMarkPassive(formattedDuration);
+    }
 
     setDurationStr(formattedDuration);
     setShowSummary(true);

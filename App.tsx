@@ -597,30 +597,30 @@ const App: React.FC = () => {
     setActiveCompanyName(null);
   };
 
-  const handleFinishAndCloseAudit = async (duration: string) => {
+  const handleMarkEventPassive = async (duration: string) => {
     if (activeEventId) {
       try {
-        // 1. Optimistic lokal güncelleme — Dashboard'da anında PASSIVE olarak görünsün
         setEvents(prev => prev.map(e => e.id === activeEventId
           ? { ...e, status: 'PASSIVE' as const, completionDuration: duration }
           : e
         ));
 
-        // 2. Firestore güncelle
         const eventRef = doc(db, 'events', activeEventId);
         await updateDoc(eventRef, {
           status: 'PASSIVE',
           completionDuration: duration
         });
-        setActiveEventId(null);
-        setActiveCompanyName(null);
 
-        // 3. Pasif listeyi güncelle (önemli: listener sadece active dinlediği için passiveEvents refetch edilmeli)
         refetchPassiveEvents();
       } catch (e) {
-        console.error("Error finishing audit: ", e);
+        console.error("Error marking audit passive: ", e);
       }
     }
+  };
+
+  const handleFinishAndCloseAudit = async (duration: string) => {
+    setActiveEventId(null);
+    setActiveCompanyName(null);
   };
 
   const handleScan = async (entry: ScanEntry) => {
@@ -960,6 +960,7 @@ const App: React.FC = () => {
         currentUser={session.currentUser}
         onExit={handleEndAudit}
         onFinish={handleFinishAndCloseAudit}
+        onMarkPassive={handleMarkEventPassive}
         onScan={handleScan}
         onBulkScan={handleBulkScan}
         onDelete={handleDeleteScan}
