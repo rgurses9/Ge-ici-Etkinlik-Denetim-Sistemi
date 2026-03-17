@@ -13,6 +13,16 @@ export interface User {
   lastActive?: number; // Added for tracking online presence
 }
 
+export interface AccreditationPersonnel {
+  sn: string;
+  sicili: string;
+  tcKimlik: string;
+  adi: string;
+  rutbesi: string;
+  dogumTarihi: string;
+  cepTel: string;
+}
+
 export interface Event {
   id: string;
   name: string;
@@ -26,6 +36,8 @@ export interface Event {
   userCounts?: Record<string, number>; // Added for efficient dashboard display without fetching all scans
   companyCounts?: Record<string, number>; // Added for efficient multi-company dashboard display
   companyUserCounts?: Record<string, number>; // Added for company-specific user stats (Format: Company_User)
+  accreditationTarget?: number;
+  accreditationPersonnel?: AccreditationPersonnel[];
 }
 
 export interface CompanyTarget {

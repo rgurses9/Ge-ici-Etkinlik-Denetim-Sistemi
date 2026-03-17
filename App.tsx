@@ -547,6 +547,14 @@ const App: React.FC = () => {
       const cachedEvents = events.map(e => e.id === updatedEvent.id ? { ...e, ...updatedEvent, currentCount: e.currentCount } : e);
       localStorage.setItem('geds_events_cache', JSON.stringify(cachedEvents));
 
+      // TanStack Query cache'ini de güncelle (Pasif etkinlikler onSnapshot'tan gelmediği için burada manuel güncellenmeli)
+      if (updatedEvent.status === 'PASSIVE') {
+        const currentPassive = queryClient.getQueryData<Event[]>(['passiveEvents']) || [];
+        queryClient.setQueryData(['passiveEvents'], currentPassive.map(e =>
+          e.id === updatedEvent.id ? { ...e, ...updatedEvent, currentCount: e.currentCount } : e
+        ));
+      }
+
     } catch (e) {
       console.error("Error updating event: ", e);
     }

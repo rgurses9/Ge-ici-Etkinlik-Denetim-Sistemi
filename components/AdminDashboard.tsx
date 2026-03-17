@@ -4,6 +4,7 @@ import { Event, User, UserRole, ScanEntry, CompanyTarget } from '../types';
 import { Plus, Users, Calendar, Play, LogOut, Eye, Trash2, Edit, UserCog, Key, ShieldCheck, User as UserIcon, Activity, Archive, Download, RefreshCw, Clock, Wifi, X, CheckCircle, Sun, Moon, Folder, ChevronDown, ChevronUp, AlertTriangle, AlertCircle, Upload, RotateCcw, Loader2, Database } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import AccreditationScreen from './AccreditationScreen';
 
 
 
@@ -103,6 +104,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [showPasswordReset, setShowPasswordReset] = useState<User | null>(null);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
 
+  // Accreditation State
+  const [accreditationSetupEvent, setAccreditationSetupEvent] = useState<Event | null>(null);
+  const [accreditationTarget, setAccreditationTarget] = useState<string>('');
+  const [activeAccreditationParams, setActiveAccreditationParams] = useState<{ event: Event, targetCount: number } | null>(null);
+
   // Self Password Change State
   const [showSelfPasswordChange, setShowSelfPasswordChange] = useState(false);
   const [selfNewPassword, setSelfNewPassword] = useState('');
@@ -113,7 +119,74 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [newUserPassword, setNewUserPassword] = useState('');
   const [newUserRoles, setNewUserRoles] = useState<UserRole[]>([UserRole.PERSONNEL]);
 
+  const [expandedUserTabs, setExpandedUserTabs] = useState<string[]>([]);
+  const toggleUserTab = (tab: string) => {
+    setExpandedUserTabs(prev =>
+      prev.includes(tab) ? prev.filter(t => t !== tab) : [...prev, tab]
+    );
+  };
+
   const isAdmin = currentUser.roles.includes(UserRole.ADMIN);
+
+  // Personnel Statistics State
+  const [personnelStats, setPersonnelStats] = useState<any[]>([]);
+  const [isStatsLoading, setIsStatsLoading] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === 'USERS' && personnelStats.length === 0 && !isStatsLoading) {
+      const fetchStats = async () => {
+        setIsStatsLoading(true);
+        try {
+          const GOOGLE_SHEETS_CSV_URL = "https://docs.google.com/spreadsheets/d/1J6SFLRCGk2-iBzi7TTjthyNzN4dWHH8A/gviz/tq?tqx=out:csv&gid=1490010137";
+          const response = await fetch(GOOGLE_SHEETS_CSV_URL);
+          const text = await response.text();
+          const XLSX = await import('xlsx');
+          const workbook = XLSX.read(text, { type: 'string', raw: true });
+          const sheetName = workbook.SheetNames[0];
+          const data = XLSX.utils.sheet_to_json<any>(workbook.Sheets[sheetName], { defval: "" });
+
+          const mappedData = data.map((row: any) => ({
+            sicili: String(row['SİCİLİ'] || ''),
+            adi: String(row['ADI'] || ''),
+            tcKimlik: String(row['TC. KİMLİK'] || ''),
+            rutbesi: String(row['RÜTBESİ'] || ''),
+          })).filter((p) => p.adi && p.adi.trim() !== "");
+
+          setPersonnelStats(mappedData);
+        } catch (error) {
+          console.error("Error fetching stats:", error);
+        } finally {
+          setIsStatsLoading(false);
+        }
+      };
+      fetchStats();
+    }
+  }, [activeTab, personnelStats.length, isStatsLoading]);
+
+  const computedPersonnelStats = useMemo(() => {
+    if (personnelStats.length === 0) return [];
+
+    // calculate counts from all events
+    const counts: Record<string, number> = {};
+    events.forEach(event => {
+      if (event.accreditationPersonnel) {
+        event.accreditationPersonnel.forEach(p => {
+          counts[p.sicili] = (counts[p.sicili] || 0) + 1;
+        });
+      }
+    });
+
+    // merge with personnel list
+    const statsList = personnelStats.map(p => ({
+      ...p,
+      count: counts[p.sicili] || 0
+    }));
+
+    // sort by count descending
+    statsList.sort((a, b) => b.count - a.count);
+
+    return statsList;
+  }, [events, personnelStats]);
 
   const handleFetchAllDashboardScans = async () => {
     if (!viewingEvent) return;
@@ -586,20 +659,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const allPassive = events.filter(e => e.status === 'PASSIVE')
       .sort((a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime());
 
-    // Group by "Month Year" (e.g., "Şubat 2026")
+    // Group by "Year" then "Month"
     const grouped = allPassive.reduce((acc, event) => {
       const date = new Date(event.endDate);
+      const yearStr = String(date.getFullYear());
       const monthName = date.toLocaleString('tr-TR', { month: 'long' });
       const formattedMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
-      const year = date.getFullYear();
-      const key = `${formattedMonth} ${year} `; // Space at end to ensure unique key?
 
-      if (!acc[key]) {
-        acc[key] = [];
+      if (!acc[yearStr]) {
+        acc[yearStr] = {};
       }
-      acc[key].push(event);
+      if (!acc[yearStr][formattedMonth]) {
+        acc[yearStr][formattedMonth] = [];
+      }
+      acc[yearStr][formattedMonth].push(event);
       return acc;
-    }, {} as Record<string, Event[]>);
+    }, {} as Record<string, Record<string, Event[]>>);
 
     return {
       continuingEvents: continuing,
@@ -611,14 +686,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     };
   }, [events]);
 
-  // Auto-expand the most recent month for passive events
-  useEffect(() => {
-    const months = Object.keys(groupedPassiveEvents);
-    if (months.length > 0) {
-      const firstMonth = months[0];
-      setExpandedMonths(prev => prev.includes(firstMonth) ? prev : [...prev, firstMonth]);
-    }
-  }, [groupedPassiveEvents]);
+  // Pasif etkinliklerin başlangıçta kapalı gelmesi için otomatik açılma (auto-expand) kodu kaldırıldı.
 
   const toggleMonth = (month: string) => {
     setExpandedMonths(prev =>
@@ -627,6 +695,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         : [...prev, month]
     );
   };
+
+  if (activeAccreditationParams) {
+    return (
+      <AccreditationScreen
+        event={activeAccreditationParams.event}
+        targetCount={activeAccreditationParams.targetCount}
+        onExit={() => setActiveAccreditationParams(null)}
+        onSave={(personnelList) => {
+          onUpdateEvent({
+            ...activeAccreditationParams.event,
+            accreditationPersonnel: personnelList,
+            accreditationTarget: activeAccreditationParams.targetCount
+          });
+          // Update the activeParams so we have the latest event data reference
+          setActiveAccreditationParams(prev => prev ? {
+            ...prev,
+            event: { ...prev.event, accreditationPersonnel: personnelList, accreditationTarget: prev.targetCount }
+          } : null);
+        }}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col transition-colors duration-200">
@@ -848,6 +938,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         {isAdmin && (
                           <>
                             <button
+                              onClick={() => {
+                                setAccreditationSetupEvent(event);
+                                setAccreditationTarget(event.accreditationTarget ? String(event.accreditationTarget) : '');
+                              }}
+                              className={`p-1.5 rounded-lg transition-all ${event.accreditationTarget
+                                ? 'text-green-600 hover:text-green-700 bg-green-50 dark:bg-green-900/30'
+                                : 'text-indigo-500 hover:text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30'
+                                }`}
+                              title={event.accreditationTarget ? "Akreditasyonu Düzenle" : "Akreditasyon Oluştur"}
+                            >
+                              <ShieldCheck size={16} />
+                            </button>
+                            <button
                               onClick={() => handleStartEditEvent(event)}
                               className="p-1.5 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-lg transition-all"
                               title="Düzenle"
@@ -984,7 +1087,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                             {company.name}
                                           </span>
                                           {companyReached && (
-                                            <span className="flex items-center gap-0.5 text-[9px] font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/40 px-1.5 py-0.5 rounded-full">
+                                            <span className="flex items-center gap-0.5 text-[9px] font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/40 px-1.5 py-0.5 rounded-full border border-green-200 dark:border-green-800">
                                               <CheckCircle size={10} /> TAMAM
                                             </span>
                                           )}
@@ -1067,6 +1170,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               {isAdmin && (
                                 <>
                                   <button
+                                    onClick={() => {
+                                      setAccreditationSetupEvent(event);
+                                      setAccreditationTarget(event.accreditationTarget ? String(event.accreditationTarget) : '');
+                                    }}
+                                    className={`p-1.5 rounded-lg transition-all ${event.accreditationTarget
+                                      ? 'text-green-600 hover:text-green-700 bg-green-50 dark:bg-green-900/30'
+                                      : 'text-indigo-500 hover:text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30'
+                                      }`}
+                                    title={event.accreditationTarget ? "Akreditasyonu Düzenle" : "Akreditasyon Oluştur"}
+                                  >
+                                    <ShieldCheck size={16} />
+                                  </button>
+                                  <button
                                     onClick={() => handleStartEditEvent(event)}
                                     className="p-1.5 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-lg transition-all"
                                     title="Düzenle"
@@ -1132,138 +1248,184 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </button>
                   </div>
 
-                  <div className="space-y-1.5">
-                    {Object.entries(groupedPassiveEvents).map(([monthYear, events]) => (
-                      <div key={monthYear} className="rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm">
-                        <button
-                          onClick={() => toggleMonth(monthYear)}
-                          className="w-full flex items-center justify-between p-2.5 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-750 transition border-b border-gray-200 dark:border-gray-700"
-                        >
-                          <div className="flex items-center gap-3">
-                            <Folder className="text-gray-400 dark:text-gray-500" size={20} />
-                            <span className="font-semibold text-gray-700 dark:text-gray-300 text-sm">{monthYear}</span>
-                            <span className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-[10px] px-2 py-0.5 rounded-full font-bold shadow-sm">
-                              {events.length}
-                            </span>
-                          </div>
-                          {expandedMonths.includes(monthYear)
-                            ? <ChevronUp className="text-gray-400" size={20} />
-                            : <ChevronDown className="text-gray-400" size={20} />
-                          }
-                        </button>
+                  <div className="space-y-4">
+                    {Object.entries(groupedPassiveEvents)
+                      .sort(([yearA], [yearB]) => Number(yearB) - Number(yearA))
+                      .map(([year, monthsMap]) => {
+                        const totalEventsInYear = Object.values(monthsMap).flat().length;
+                        return (
+                          <div key={year} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 shadow-sm overflow-hidden">
+                            <button
+                              onClick={() => toggleMonth(year)}
+                              className="w-full flex items-center justify-between p-2.5 bg-gray-100 dark:bg-gray-800/80 hover:bg-gray-200 dark:hover:bg-gray-700 transition"
+                            >
+                              <div className="flex items-center gap-3">
+                                <Archive className="text-gray-500 dark:text-gray-400" size={20} />
+                                <span className="font-semibold text-gray-700 dark:text-gray-300 text-sm">{year} Yılı Arşivi</span>
+                                <span className="bg-gray-300 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-[10px] px-2 py-0.5 rounded-full font-bold shadow-sm">
+                                  {totalEventsInYear}
+                                </span>
+                              </div>
+                              {expandedMonths.includes(year)
+                                ? <ChevronUp className="text-gray-400" size={20} />
+                                : <ChevronDown className="text-gray-400" size={20} />
+                              }
+                            </button>
 
-                        {expandedMonths.includes(monthYear) && (
-                          <div className="p-2 space-y-1.5 bg-white dark:bg-gray-900/30">
-                            {events.map((event) => {
-                              const isRecent = recentPassiveEvents.some(re => re.id === event.id);
-
-                              // Check for unknown personnel (Veri Tabanında Bulunamadı)
-                              const eventEntries = scannedEntries[event.id] || [];
-                              const hasUnknownPersonnel = eventEntries.some(entry =>
-                                entry.citizen.name === 'Veri Tabanında' && entry.citizen.surname === 'Bulunamadı'
-                              );
-
-                              // Custom style matching user's image request
-                              // Dark mode: darker bg, green border (more visible green-600)
-                              const cardClass = isRecent
-                                ? "bg-white dark:bg-[#0f172a] border border-gray-200 dark:border-green-600 shadow-sm hover:shadow-md"
-                                : "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 opacity-75 hover:opacity-100";
-
-                              return (
-                                <div key={event.id} className={`rounded-lg p-2.5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 transition ${cardClass}`}>
-                                  <div className="w-full sm:w-auto">
-                                    <h4 className="font-bold text-gray-800 dark:text-white text-xs flex flex-wrap gap-1 items-center">
-                                      {event.name}
-                                      {isRecent && hasUnknownPersonnel && (
-                                        <span className="flex items-center gap-1 text-[10px] bg-[#3f1616] text-red-500 px-2 py-0.5 rounded-full border border-red-900/50 whitespace-nowrap ml-2">
-                                          <AlertTriangle size={10} />
-                                          Belirsiz Personel
-                                        </span>
-                                      )}
-                                    </h4>
-
-                                    {isRecent ? (
-                                      <div className="flex flex-wrap items-center gap-3 mt-2 text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">
-                                        <span className="text-gray-500 dark:text-gray-400">Tamamlandı</span>
-                                        <span className="text-gray-300 dark:text-gray-600">•</span>
-                                        <span className="font-mono text-gray-700 dark:text-gray-300">
-                                          {(scannedEntries[event.id]?.length || event.currentCount)} / {event.targetCount}
-                                        </span>
-
-                                        {event.completionDuration && (
-                                          <>
-                                            <span className="text-gray-300 dark:text-gray-600">•</span>
-                                            <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700">
-                                              <Clock size={10} />
-                                              <span className="font-mono">{event.completionDuration}</span>
-                                            </div>
-                                          </>
-                                        )}
-                                      </div>
-                                    ) : (
-                                      <div className="mt-1 text-[10px] text-gray-400">
-                                        Veriler arşivlenmiş (Görmek için Yenile)
-                                      </div>
-                                    )}
-                                  </div>
-
-                                  <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                                    {isRecent && (
-                                      <>
-                                        <button
-                                          onClick={() => setViewingEvent(event)}
-                                          className="p-1.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition"
-                                          title="Listeyi Gör"
-                                        >
-                                          <Eye size={16} />
-                                        </button>
-                                        {isAdmin && (
-                                          <>
-                                            <button
-                                              onClick={() => handleStartEditEvent(event)}
-                                              className="p-1.5 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 transition"
-                                              title="Düzenle"
-                                            >
-                                              <Edit size={16} />
-                                            </button>
-                                            <button
-                                              onClick={() => {
-                                                if (confirm(`"${event.name}" etkinliğini devam eden denetimlere iade etmek istediğinize emin misiniz?`)) {
-                                                  onReactivateEvent(event.id);
-                                                }
-                                              }}
-                                              className="p-1.5 text-orange-400 hover:text-orange-600 dark:text-orange-300 dark:hover:text-orange-200 transition"
-                                              title="İade Et"
-                                            >
-                                              <RotateCcw size={16} />
-                                            </button>
-                                          </>
-                                        )}
-                                      </>
-                                    )}
-                                    {isAdmin && (
+                            {expandedMonths.includes(year) && (
+                              <div className="p-3 space-y-2">
+                                {Object.entries(monthsMap).map(([month, events]) => {
+                                  const monthId = `${year}-${month}`;
+                                  return (
+                                    <div key={monthId} className="rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm">
                                       <button
-                                        onClick={() => {
-                                          const count = event.currentCount || 0;
-                                          const msg = count > 0
-                                            ? `"${event.name}" etkinliğinde ${count} kimlik okutulmuş. Etkinliği silmek istediğinize emin misiniz?`
-                                            : `"${event.name}" etkinliğini silmek istediğinize emin misiniz?`;
-                                          if (confirm(msg)) onDeleteEvent(event.id);
-                                        }}
-                                        className="p-1.5 text-gray-400 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400 transition"
-                                        title="Sil"
+                                        onClick={() => toggleMonth(monthId)}
+                                        className="w-full flex items-center justify-between p-2.5 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition border-b border-gray-200 dark:border-gray-700"
                                       >
-                                        <Trash2 size={16} />
+                                        <div className="flex items-center gap-3">
+                                          <Folder className="text-gray-400 dark:text-gray-500" size={20} />
+                                          <span className="font-semibold text-gray-700 dark:text-gray-300 text-sm">{month} {year}</span>
+                                          <span className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-[10px] px-2 py-0.5 rounded-full font-bold shadow-sm">
+                                            {events.length}
+                                          </span>
+                                        </div>
+                                        {expandedMonths.includes(monthId)
+                                          ? <ChevronUp className="text-gray-400" size={20} />
+                                          : <ChevronDown className="text-gray-400" size={20} />
+                                        }
                                       </button>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
+
+                                      {expandedMonths.includes(monthId) && (
+                                        <div className="p-2 space-y-1.5 bg-white dark:bg-gray-900/30">
+                                          {events.map((event) => {
+                                            const isRecent = recentPassiveEvents.some(re => re.id === event.id);
+
+                                            // Check for unknown personnel (Veri Tabanında Bulunamadı)
+                                            const eventEntries = scannedEntries[event.id] || [];
+                                            const hasUnknownPersonnel = eventEntries.some(entry =>
+                                              entry.citizen.name === 'Veri Tabanında' && entry.citizen.surname === 'Bulunamadı'
+                                            );
+
+                                            const cardClass = isRecent
+                                              ? "bg-white dark:bg-[#0f172a] border border-gray-200 dark:border-green-600 shadow-sm hover:shadow-md"
+                                              : "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 opacity-75 hover:opacity-100";
+
+                                            return (
+                                              <div key={event.id} className={`rounded-lg p-2.5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 transition ${cardClass}`}>
+                                                <div className="w-full sm:w-auto">
+                                                  <h4 className="font-bold text-gray-800 dark:text-white text-xs flex flex-wrap gap-1 items-center">
+                                                    {event.name}
+                                                    {isRecent && hasUnknownPersonnel && (
+                                                      <span className="flex items-center gap-1 text-[10px] bg-[#3f1616] text-red-500 px-2 py-0.5 rounded-full border border-red-900/50 whitespace-nowrap ml-2">
+                                                        <AlertTriangle size={10} />
+                                                        Belirsiz Personel
+                                                      </span>
+                                                    )}
+                                                  </h4>
+
+                                                  {isRecent ? (
+                                                    <div className="flex flex-wrap items-center gap-3 mt-2 text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">
+                                                      <span className="text-gray-500 dark:text-gray-400">Tamamlandı</span>
+                                                      <span className="text-gray-300 dark:text-gray-600">•</span>
+                                                      <span className="font-mono text-gray-700 dark:text-gray-300">
+                                                        {(scannedEntries[event.id]?.length || event.currentCount)} / {event.targetCount}
+                                                      </span>
+
+                                                      {event.completionDuration && (
+                                                        <>
+                                                          <span className="text-gray-300 dark:text-gray-600">•</span>
+                                                          <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700">
+                                                            <Clock size={10} />
+                                                            <span className="font-mono">{event.completionDuration}</span>
+                                                          </div>
+                                                        </>
+                                                      )}
+                                                    </div>
+                                                  ) : (
+                                                    <div className="mt-1 text-[10px] text-gray-400">
+                                                      Veriler arşivlenmiş (Görmek için Yenile)
+                                                    </div>
+                                                  )}
+                                                </div>
+
+                                                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                                                  {isRecent && (
+                                                    <>
+                                                      <button
+                                                        onClick={() => setViewingEvent(event)}
+                                                        className="p-1.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition"
+                                                        title="Listeyi Gör"
+                                                      >
+                                                        <Eye size={16} />
+                                                      </button>
+                                                      {isAdmin && (
+                                                        <>
+                                                          <button
+                                                            onClick={() => handleStartEditEvent(event)}
+                                                            className="p-1.5 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 transition"
+                                                            title="Düzenle"
+                                                          >
+                                                            <Edit size={16} />
+                                                          </button>
+                                                          <button
+                                                            onClick={() => {
+                                                              if (confirm(`"${event.name}" etkinliğini devam eden denetimlere iade etmek istediğinize emin misiniz?`)) {
+                                                                onReactivateEvent(event.id);
+                                                              }
+                                                            }}
+                                                            className="p-1.5 text-orange-400 hover:text-orange-600 dark:text-orange-300 dark:hover:text-orange-200 transition"
+                                                            title="İade Et"
+                                                          >
+                                                            <RotateCcw size={16} />
+                                                          </button>
+                                                        </>
+                                                      )}
+                                                    </>
+                                                  )}
+                                                  {isAdmin && (
+                                                    <>
+                                                      <button
+                                                        onClick={() => {
+                                                          setAccreditationSetupEvent(event);
+                                                          setAccreditationTarget(event.accreditationTarget ? String(event.accreditationTarget) : '');
+                                                        }}
+                                                        className={`p-1.5 transition-all ${event.accreditationTarget
+                                                          ? 'text-green-600 hover:text-green-700 dark:text-green-400'
+                                                          : 'text-indigo-500 hover:text-indigo-600 dark:text-indigo-400'
+                                                          }`}
+                                                        title={event.accreditationTarget ? "Akreditasyonu Düzenle" : "Akreditasyon Oluştur"}
+                                                      >
+                                                        <ShieldCheck size={16} />
+                                                      </button>
+                                                      <button
+                                                        onClick={() => {
+                                                          const count = event.currentCount || 0;
+                                                          const msg = count > 0
+                                                            ? `"${event.name}" etkinliğinde ${count} kimlik okutulmuş. Etkinliği silmek istediğinize emin misiniz?`
+                                                            : `"${event.name}" etkinliğini silmek istediğinize emin misiniz?`;
+                                                          if (confirm(msg)) onDeleteEvent(event.id);
+                                                        }}
+                                                        className="p-1.5 text-gray-400 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400 transition"
+                                                        title="Sil"
+                                                      >
+                                                        <Trash2 size={16} />
+                                                      </button>
+                                                    </>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    ))}
+                        );
+                      })}
                   </div>
                 </div >
               )
@@ -1272,61 +1434,140 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         ) : (
           /* User List */
           isAdmin && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400 mb-2 px-1">
-                <span>Toplam {users.length} kullanıcı</span>
-              </div>
-              {users.map((user) => (
-                <div key={user.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm hover:shadow-md transition flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 shrink-0">
-                      <UserIcon size={20} />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-gray-900 dark:text-white">{user.username}</h3>
-                      {user.fullName !== user.username && <p className="text-sm text-gray-500 dark:text-gray-400">{user.fullName}</p>}
-                    </div>
-                    <div className="ml-auto sm:ml-2 flex flex-wrap gap-1">
-                      {user.roles.includes(UserRole.ADMIN) && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300">
-                          YÖNETİCİ
-                        </span>
-                      )}
-                      {user.roles.includes(UserRole.PERSONNEL) && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
-                          KULLANICI
-                        </span>
-                      )}
-                    </div>
-                  </div>
+            <div className="space-y-6">
 
-                  <div className="flex items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0">
-                    <button
-                      onClick={() => setEditingUser({ ...user })}
-                      className="flex-1 sm:flex-none px-3 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 text-sm font-medium flex items-center justify-center gap-2 transition"
-                    >
-                      <UserCog size={16} /> Düzenle
-                    </button>
-                    <button
-                      onClick={() => setShowPasswordReset(user)}
-                      className="flex-1 sm:flex-none px-3 py-2 bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 text-sm font-medium flex items-center justify-center gap-2 transition"
-                    >
-                      <Key size={16} /> Şifre
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (confirm(`"${user.username}" kullanıcısını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`)) {
-                          onDeleteUser(user.id);
-                        }
-                      }}
-                      className="flex-1 sm:flex-none px-3 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 text-sm font-medium flex items-center justify-center gap-2 transition"
-                      title="Kullanıcıyı Sil"
-                    >
-                      <Trash2 size={16} /> Sil
-                    </button>
+              {/* System Users Panel */}
+              <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 shadow-sm overflow-hidden">
+                <button
+                  onClick={() => toggleUserTab('system-users')}
+                  className="w-full flex items-center justify-between p-4 bg-gray-100 dark:bg-gray-800/80 hover:bg-gray-200 dark:hover:bg-gray-700 transition border-b border-gray-200 dark:border-gray-700"
+                >
+                  <div className="flex items-center gap-3">
+                    <Users className="text-gray-500 dark:text-gray-400" size={20} />
+                    <span className="font-bold text-gray-800 dark:text-gray-200 text-base">Sistem Kullanıcıları</span>
+                    <span className="bg-gray-300 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs px-2.5 py-0.5 rounded-full font-bold shadow-sm">
+                      {users.length}
+                    </span>
                   </div>
-                </div>
-              ))}
+                  {expandedUserTabs.includes('system-users')
+                    ? <ChevronUp className="text-gray-500" size={20} />
+                    : <ChevronDown className="text-gray-500" size={20} />
+                  }
+                </button>
+                {expandedUserTabs.includes('system-users') && (
+                  <div className="p-4 space-y-4">
+                    {users.map((user) => (
+                      <div key={user.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm hover:shadow-md transition flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 shrink-0">
+                            <UserIcon size={20} />
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-gray-900 dark:text-white">{user.username}</h3>
+                            {user.fullName !== user.username && <p className="text-sm text-gray-500 dark:text-gray-400">{user.fullName}</p>}
+                          </div>
+                          <div className="ml-auto sm:ml-2 flex flex-wrap gap-1">
+                            {user.roles.includes(UserRole.ADMIN) && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300">
+                                YÖNETİCİ
+                              </span>
+                            )}
+                            {user.roles.includes(UserRole.PERSONNEL) && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
+                                KULLANICI
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+                          <button
+                            onClick={() => setEditingUser({ ...user })}
+                            className="flex-1 sm:flex-none px-3 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 text-sm font-medium flex items-center justify-center gap-2 transition"
+                          >
+                            <UserCog size={16} /> Düzenle
+                          </button>
+                          <button
+                            onClick={() => setShowPasswordReset(user)}
+                            className="flex-1 sm:flex-none px-3 py-2 bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 text-sm font-medium flex items-center justify-center gap-2 transition"
+                          >
+                            <Key size={16} /> Şifre
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`"${user.username}" kullanıcısını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`)) {
+                                onDeleteUser(user.id);
+                              }
+                            }}
+                            className="flex-1 sm:flex-none px-3 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 text-sm font-medium flex items-center justify-center gap-2 transition"
+                            title="Kullanıcıyı Sil"
+                          >
+                            <Trash2 size={16} /> Sil
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Personnel Stats List Panel */}
+              <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 shadow-sm overflow-hidden animate-in fade-in zoom-in duration-300">
+                <button
+                  onClick={() => toggleUserTab('personnel-stats')}
+                  className="w-full flex items-center justify-between p-4 bg-gray-100 dark:bg-gray-800/80 hover:bg-gray-200 dark:hover:bg-gray-700 transition border-b border-gray-200 dark:border-gray-700"
+                >
+                  <div className="flex items-center gap-3">
+                    <Activity className="text-blue-500" size={20} />
+                    <span className="font-bold text-gray-800 dark:text-gray-200 text-base">Personel Akreditasyon İstatistikleri</span>
+                  </div>
+                  {expandedUserTabs.includes('personnel-stats')
+                    ? <ChevronUp className="text-gray-500" size={20} />
+                    : <ChevronDown className="text-gray-500" size={20} />
+                  }
+                </button>
+                {expandedUserTabs.includes('personnel-stats') && (
+                  <div className="p-4 bg-white dark:bg-gray-900/30">
+
+                    {isStatsLoading ? (
+                      <div className="flex flex-col items-center justify-center p-12 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm gap-3">
+                        <Loader2 size={32} className="animate-spin text-blue-500" />
+                        <span className="text-gray-500 font-medium dark:text-gray-400">Veriler yükleniyor...</span>
+                      </div>
+                    ) : (
+                      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
+                        <div className="max-h-[500px] overflow-y-auto custom-scrollbar">
+                          <table className="w-full text-left border-collapse">
+                            <thead className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-md flex w-full sticky top-0 z-10 shadow-sm">
+                              <tr className="flex w-full">
+                                <th className="p-4 w-16 shrink-0 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden sm:table-cell">SN.</th>
+                                <th className="p-4 flex-1 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Personel</th>
+                                <th className="p-4 w-32 shrink-0 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Görev Sayısı</th>
+                              </tr>
+                            </thead>
+                            <tbody className="flex flex-col w-full divide-y divide-gray-100 dark:divide-gray-700">
+                              {computedPersonnelStats.map((p, index) => (
+                                <tr key={p.sicili} className="flex w-full hover:bg-gray-50 dark:hover:bg-gray-700/50 transition group items-center">
+                                  <td className="p-4 w-16 shrink-0 text-sm text-gray-500 dark:text-gray-400 font-medium hidden sm:table-cell">{index + 1}</td>
+                                  <td className="p-4 flex-1 overflow-hidden text-ellipsis">
+                                    <div className="font-bold text-gray-900 dark:text-white text-sm truncate">{p.adi}</div>
+                                    <div className="text-xs text-gray-500 mt-0.5 dark:text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300 transition truncate">{p.rutbesi} • {p.sicili}</div>
+                                  </td>
+                                  <td className="p-4 w-32 shrink-0 text-right">
+                                    <span className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap ${p.count > 0 ? "bg-blue-50 border border-blue-200 text-blue-700 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400" : "bg-gray-50 border border-gray-200 text-gray-500 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400"}`}>
+                                      {p.count} Kez
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )
         )}
@@ -1950,6 +2191,87 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         )
       }
+
+      {/* Accreditation Setup Modal */}
+      {accreditationSetupEvent && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md overflow-hidden relative border border-gray-100 dark:border-gray-700 animate-in fade-in zoom-in duration-200">
+            {/* Modal Header */}
+            <div className="p-8 text-center flex flex-col items-center border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/80">
+              <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/30 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 mb-4 shadow-sm">
+                <ShieldCheck size={32} />
+              </div>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">Yeni Görev Listesi</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Görevli personel listesini oluşturmak için bilgileri giriniz.</p>
+            </div>
+
+            <button
+              onClick={() => {
+                setAccreditationSetupEvent(null);
+                setAccreditationTarget('');
+              }}
+              className="absolute right-4 top-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="p-8 space-y-6">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                  Müsabaka İsmi
+                </label>
+                <input
+                  type="text"
+                  value={accreditationSetupEvent.name}
+                  disabled
+                  className="w-full px-4 py-3 bg-gray-100 dark:bg-gray-800 border-2 border-transparent dark:border-gray-700 rounded-xl text-gray-500 dark:text-gray-400 font-medium cursor-not-allowed"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                  Görevli Sayısı
+                </label>
+                <input
+                  type="number"
+                  placeholder="Örn: 50"
+                  value={accreditationTarget}
+                  onChange={(e) => setAccreditationTarget(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const targetNum = parseInt(accreditationTarget, 10);
+                      if (!isNaN(targetNum) && targetNum > 0) {
+                        setActiveAccreditationParams({ event: accreditationSetupEvent, targetCount: targetNum });
+                        setAccreditationSetupEvent(null);
+                        setAccreditationTarget('');
+                      } else {
+                        alert('Lütfen geçerli bir görevli sayısı girin.');
+                      }
+                    }
+                  }}
+                  className="w-full px-4 py-3 bg-white dark:bg-gray-900 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:focus:ring-blue-900/20 text-gray-900 dark:text-white font-medium outline-none transition"
+                />
+              </div>
+
+              <button
+                onClick={() => {
+                  const targetNum = parseInt(accreditationTarget, 10);
+                  if (!isNaN(targetNum) && targetNum > 0) {
+                    setActiveAccreditationParams({ event: accreditationSetupEvent, targetCount: targetNum });
+                    setAccreditationSetupEvent(null);
+                    setAccreditationTarget('');
+                  } else {
+                    alert('Lütfen geçerli bir görevli sayısı girin.');
+                  }
+                }}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 transition shadow-md hover:shadow-lg active:scale-[0.98]"
+              >
+                Listeyi Başlat <Users size={18} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div >
   );
 };

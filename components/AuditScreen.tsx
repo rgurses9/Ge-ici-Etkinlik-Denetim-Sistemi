@@ -304,6 +304,17 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     inputRef.current?.focus();
   }, []);
 
+  // Escape tuşu ile çıkış yapma (geri menüye dönme)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onExit();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onExit]);
+
   // Fetch from Google Sheets - OPTIMIZED CACHE (24 Hours) - Sıkıştırılmış veri
   const loadData = async () => {
     const CACHE_KEY = 'geds_worker_db_v3_compressed';
