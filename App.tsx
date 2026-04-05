@@ -215,9 +215,26 @@ const App: React.FC = () => {
   // Pasif veriler artık sadece kullanıcı "Yenile" butonuna bastığında (refreshPassiveData) yüklenecek.
   // Bu değişiklik admin girişinde binlerce gereksiz Firestore okumasını engeller.
 
-  // Conflict Check (PURE LOCAL - Zero Firestore Reads)
+  // Conflict Check (Firestore + Local)
   const checkCitizenshipConflict = async (tc: string, ignoreEventId: string): Promise<string | null> => {
     try {
+      // 1. ŞU ANKİ ETKİNLİK İÇİN MÜKERRER KONTROLÜ (Firestore'dan kesin kontrol)
+      const duplicateQuery = query(
+        collection(db, 'scanned_entries'),
+        where('eventId', '==', ignoreEventId),
+        where('citizen.tc', '==', tc),
+        limit(1)
+      );
+      const duplicateSnap = await getDocs(duplicateQuery);
+      if (!duplicateSnap.empty) {
+        const dupEntry = duplicateSnap.docs[0].data() as ScanEntry;
+        if (dupEntry.companyName && activeCompanyName && dupEntry.companyName !== activeCompanyName) {
+          return `MÜKERRER! ${tc} TC kimlik numaralı şahıs ${dupEntry.companyName} şirketinde kayda alındı.`;
+        } else {
+          return `MÜKERRER KAYIT! Bu kişi zaten bu etkinliğe eklendi. (Kaydeden: ${dupEntry.recordedBy || 'Bilinmiyor'})`;
+        }
+      }
+
       let otherScans: ScanEntry[] = [];
 
       // ONLY check local state — no Firestore query at all

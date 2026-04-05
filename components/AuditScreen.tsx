@@ -561,12 +561,43 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     const XLSX = await import('xlsx');
     const reader = new FileReader();
 
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       const bstr = evt.target?.result;
       const wb = XLSX.read(bstr, { type: 'binary' });
       const wsname = wb.SheetNames[0];
       const ws = wb.Sheets[wsname];
       const data: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+      // 1. Extract all valid unique TCs from the Excel first
+      const excelTCs = new Set<string>();
+      for (let i = 0; i < data.length; i++) {
+        const row = data[i];
+        if (row.length === 0) continue;
+        const tcVal = row.find(cell => cell !== undefined && cell !== null && cell !== '');
+        if (!tcVal) continue;
+        const tc = String(tcVal).trim().replace(/\D/g, '');
+        if (tc.length === 11) {
+          excelTCs.add(tc);
+        }
+      }
+
+      const uniqueExcelTCs = Array.from(excelTCs);
+      const existingTCsInEvent = new Set<string>();
+
+      // 2. Query Firestore in chunks of 30 to see what already exists in the same event
+      setLastScanResult({ status: 'WARNING', message: 'Mükerrer kontrolleri yapılıyor, lütfen bekleyin...' });
+      for (let i = 0; i < uniqueExcelTCs.length; i += 30) {
+        const chunk = uniqueExcelTCs.slice(i, i + 30);
+        const q = query(
+          collection(db, 'scanned_entries'),
+          where('eventId', '==', event.id),
+          where('citizen.tc', 'in', chunk)
+        );
+        const snap = await getDocs(q);
+        snap.forEach(doc => {
+          existingTCsInEvent.add((doc.data() as ScanEntry).citizen.tc);
+        });
+      }
 
       const newEntries: ScanEntry[] = [];
       let successCount = 0;
@@ -574,7 +605,8 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       let errorMsg = '';
 
       const currentTimestamp = new Date().toLocaleTimeString();
-      // Flatten data to get just TCs from first available column
+
+      // Proceed with normal logic
       for (let i = 0; i < data.length; i++) {
         const row = data[i];
         if (row.length === 0) continue;
@@ -600,8 +632,8 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
           }
         }
 
-        // 1. Duplicate in List
-        if (scannedList.find(s => s.citizen.tc === tc)) {
+        // 1. Duplicate in Firestore SAME EVENT (The most robust check)
+        if (existingTCsInEvent.has(tc)) {
           failCount++;
           continue;
         }
@@ -722,12 +754,12 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       const dataToExport = allData.map(item => {
         const status = checkWorkStatus(item.citizen.validityDate);
 
-        let ad = item.citizen.name || '';
-        let soyad = item.citizen.surname || '';
+        let ad = (item.citizen.name || '').trim();
+        let soyad = (item.citizen.surname || '').trim();
 
         // Eğer soyad yoksa ve ad boşluk içeriyorsa son kelimeyi soyad olarak ayır
-        if (!soyad && ad.trim().includes(' ')) {
-          const parts = ad.trim().split(/\s+/);
+        if (!soyad && /\s/.test(ad)) {
+          const parts = ad.split(/\s+/);
           soyad = parts.pop() || '';
           ad = parts.join(' ');
         }
@@ -786,12 +818,12 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       const dataToExport = allData.map(item => {
         const status = checkWorkStatus(item.citizen.validityDate);
 
-        let ad = item.citizen.name || '';
-        let soyad = item.citizen.surname || '';
+        let ad = (item.citizen.name || '').trim();
+        let soyad = (item.citizen.surname || '').trim();
 
         // Eğer soyad yoksa ve ad boşluk içeriyorsa son kelimeyi soyad olarak ayır
-        if (!soyad && ad.trim().includes(' ')) {
-          const parts = ad.trim().split(/\s+/);
+        if (!soyad && /\s/.test(ad)) {
+          const parts = ad.split(/\s+/);
           soyad = parts.pop() || '';
           ad = parts.join(' ');
         }
