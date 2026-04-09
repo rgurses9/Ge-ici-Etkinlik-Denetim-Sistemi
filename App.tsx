@@ -378,8 +378,7 @@ const App: React.FC = () => {
 
         const qConstraints: any[] = [
           where('eventId', '==', activeEventId),
-          orderBy('serverTimestamp', 'desc'),
-          limit(200) // OPTIMIZED: 1500'den 200'e düşürüldü (87% okuma azalması)
+          limit(200) // OPTIMIZED: orderBy kaldırıldı (serverTimestamp eksik ghost kayıtları göstermek için). Sıralama React tarafında yapılacak.
         ];
 
         if (activeCompanyName) {

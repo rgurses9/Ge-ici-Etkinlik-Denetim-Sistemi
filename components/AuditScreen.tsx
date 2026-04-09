@@ -292,11 +292,14 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
   };
 
   const mergedList = React.useMemo(() => {
-    if (!isFullListLoaded) return scannedList;
+    if (!isFullListLoaded) {
+      // client-side sort for scannedList since we removed orderBy from Firestore
+      return [...scannedList].sort((a, b) => (b.serverTimestamp || Date.now()) - (a.serverTimestamp || Date.now()));
+    }
     const map = new Map<string, ScanEntry>();
     fullScannedList.forEach(item => map.set(item.id, item));
     scannedList.forEach(item => map.set(item.id, item));
-    return Array.from(map.values()).sort((a, b) => (b.serverTimestamp || 0) - (a.serverTimestamp || 0));
+    return Array.from(map.values()).sort((a, b) => (b.serverTimestamp || Date.now()) - (a.serverTimestamp || Date.now()));
   }, [scannedList, fullScannedList, isFullListLoaded]);
 
   // Focus input on mount
@@ -401,8 +404,8 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
     : event.targetCount;
 
   const displayCount = activeCompanyName
-    ? (event.companyCounts?.[activeCompanyName.replace(/\./g, '_')] || 0)
-    : (event.currentCount || 0);
+    ? (event.companyCounts?.[activeCompanyName?.replace(/\./g, '_')] || Math.max(0, mergedList.filter(item => item.companyName === activeCompanyName)?.length || 0))
+    : Math.max((event.currentCount || 0), mergedList?.length || 0);
 
   const progressPercentage = effectiveTarget > 0
     ? Math.min(100, Math.round((displayCount / effectiveTarget) * 100))
@@ -584,6 +587,14 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       const uniqueExcelTCs = Array.from(excelTCs);
       const existingTCsInEvent = new Set<string>();
 
+      // UI'da GÖZÜKEN TClerin listesi:
+      const uiTCs = new Set<string>();
+      mergedList.forEach(item => {
+        if (item.citizen && item.citizen.tc) {
+          uiTCs.add(item.citizen.tc);
+        }
+      });
+
       // 2. Query Firestore in chunks of 30 to see what already exists in the same event
       setLastScanResult({ status: 'WARNING', message: 'Mükerrer kontrolleri yapılıyor, lütfen bekleyin...' });
       for (let i = 0; i < uniqueExcelTCs.length; i += 30) {
@@ -595,7 +606,14 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
         );
         const snap = await getDocs(q);
         snap.forEach(doc => {
-          existingTCsInEvent.add((doc.data() as ScanEntry).citizen.tc);
+          const tc = (doc.data() as ScanEntry).citizen.tc;
+          // EĞER VERİ TABANINDA VARSA, AMA UI (Ekranda) YOKSA, bu bir Hayalet Kayıttır!
+          // Bunu 'existing' olarak SAYMA ki, yeniden eklenebilsin ve ui'a düşsün.
+          if (uiTCs.has(tc)) {
+            existingTCsInEvent.add(tc);
+          } else {
+            console.warn(`🕵️‍♂️ Hayalet Kayıt Yakalandı! TC: ${tc}. Veritabanında var ama ekrana düşmemiş. Süzgeçten geçiriliyor...`);
+          }
         });
       }
 
