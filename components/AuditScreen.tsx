@@ -600,6 +600,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       }
 
       const newEntries: ScanEntry[] = [];
+      const seenInThisFile = new Set<string>();
       let successCount = 0;
       let duplicateInEventCount = 0;
       let duplicateInBatchCount = 0;
@@ -638,15 +639,16 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
           }
         }
 
-        // 1. Duplicate in Firestore SAME EVENT (The most robust check)
-        if (existingTCsInEvent.has(tc)) {
-          duplicateInEventCount++;
+        // 1. Duplicate in Batch (Excel Listesi İçi Kontrol)
+        if (seenInThisFile.has(tc)) {
+          duplicateInBatchCount++;
           continue;
         }
+        seenInThisFile.add(tc);
 
-        // 2. Duplicate in Batch
-        if (newEntries.find(s => s.citizen.tc === tc)) {
-          duplicateInBatchCount++;
+        // 2. Duplicate in Firestore SAME EVENT (The most robust check)
+        if (existingTCsInEvent.has(tc)) {
+          duplicateInEventCount++;
           continue;
         }
 
