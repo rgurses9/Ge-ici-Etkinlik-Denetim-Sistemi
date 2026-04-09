@@ -601,7 +601,10 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
       const newEntries: ScanEntry[] = [];
       let successCount = 0;
-      let failCount = 0;
+      let duplicateInEventCount = 0;
+      let duplicateInBatchCount = 0;
+      let conflictCount = 0;
+      let invalidLengthCount = 0;
       let errorMsg = '';
 
       const currentTimestamp = new Date().toLocaleTimeString();
@@ -616,7 +619,10 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
         const tc = String(tcVal).trim().replace(/\D/g, '');
 
-        if (tc.length !== 11) continue;
+        if (tc.length !== 11) {
+          invalidLengthCount++;
+          continue;
+        }
 
         if ((event.currentCount || 0) + newEntries.length >= event.targetCount) {
           errorMsg = 'Toplam hedef limite ulaşıldı.';
@@ -634,12 +640,13 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
 
         // 1. Duplicate in Firestore SAME EVENT (The most robust check)
         if (existingTCsInEvent.has(tc)) {
-          failCount++;
+          duplicateInEventCount++;
           continue;
         }
 
         // 2. Duplicate in Batch
         if (newEntries.find(s => s.citizen.tc === tc)) {
+          duplicateInBatchCount++;
           continue;
         }
 
@@ -651,7 +658,9 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
             const otherEvent = allEvents.find(e => e.id === foundEntry.eventId);
             if (!otherEvent) continue;
 
-            if (otherEvent.status === 'ACTIVE' && otherEvent.id !== event.id) {
+            if (otherEvent.id === event.id) continue; // Aynı etkinliği conflict sayma
+
+            if (otherEvent.status === 'ACTIVE') {
               hasConflict = true; break;
             }
 
@@ -667,7 +676,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
         }
 
         if (hasConflict) {
-          failCount++;
+          conflictCount++;
           continue;
         }
 
@@ -698,14 +707,26 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
         successCount++;
       }
 
+      let totalFails = duplicateInEventCount + duplicateInBatchCount + conflictCount + invalidLengthCount;
+      let detailParts = [];
+      if (duplicateInEventCount > 0) detailParts.push(`${duplicateInEventCount} zaten kayıtlı`);
+      if (duplicateInBatchCount > 0) detailParts.push(`${duplicateInBatchCount} Excel içi tekrar`);
+      if (conflictCount > 0) detailParts.push(`${conflictCount} çakışan`);
+      if (invalidLengthCount > 0) detailParts.push(`${invalidLengthCount} hatalı TC`);
+      
+      let detailsStr = detailParts.length > 0 ? ` (${detailParts.join(', ')})` : '';
+
       if (newEntries.length > 0) {
         onBulkScan(newEntries);
 
-        let finalMessage = `${newEntries.length} kişi eklendi. ${failCount} kişi hatalı/çakışan veya mükerrer. ${errorMsg}`;
+        let finalMessage = `${newEntries.length} kişi eklendi.`;
+        if (totalFails > 0) finalMessage += ` ${totalFails} kişi atlandı${detailsStr}.`;
+        if (errorMsg) finalMessage += ` ${errorMsg}`;
+
         if ((event.currentCount || 0) + newEntries.length >= event.targetCount) {
-          finalMessage = `🏁 HEDEF SAYIYA ULAŞILDI! ${newEntries.length} kişi eklendi. Lütfen 'Denetimi Bitir' butonuna basın.`;
+          finalMessage = `🏁 HEDEF SAYIYA ULAŞILDI! ${finalMessage} Lütfen 'Denetimi Bitir' butonuna basın.`;
         } else if (activeCompanyName && displayCount + newEntries.length >= effectiveTarget) {
-          finalMessage = `🏁 ${activeCompanyName} ŞİRKETİ İÇİN HEDEF SAYIYA ULAŞILDI! ${newEntries.length} kişi eklendi.`;
+          finalMessage = `🏁 ${activeCompanyName} ŞİRKETİ İÇİN HEDEF SAYIYA ULAŞILDI! ${finalMessage}`;
         }
 
         setLastScanResult({
@@ -715,7 +736,7 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
       } else {
         setLastScanResult({
           status: 'ERROR',
-          message: `Kayıt eklenemedi. ${failCount} hata. ${errorMsg}`
+          message: `Kayıt eklenemedi. Toplam ${totalFails} hata${detailsStr}. ${errorMsg}`
         });
       }
     };
