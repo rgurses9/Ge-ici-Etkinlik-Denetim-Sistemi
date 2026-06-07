@@ -5,8 +5,30 @@ import { Plus, Users, Calendar, Play, LogOut, Eye, Trash2, Edit, UserCog, Key, S
 import { db } from '../firebase';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import AccreditationScreen from './AccreditationScreen';
+const ensureUniqueCompanyNames = (companies: CompanyTarget[]): CompanyTarget[] => {
+  const nameCounts: Record<string, number> = {};
+  companies.forEach(c => {
+    const trimmedName = c.name.trim();
+    nameCounts[trimmedName] = (nameCounts[trimmedName] || 0) + 1;
+  });
 
-
+  const seenNames: Record<string, number> = {};
+  return companies.map(c => {
+    const trimmedName = c.name.trim();
+    if (nameCounts[trimmedName] > 1) {
+      seenNames[trimmedName] = (seenNames[trimmedName] || 0) + 1;
+      const baseName = `${trimmedName} (${c.count})`;
+      if (!seenNames[baseName]) {
+        seenNames[baseName] = 1;
+        return { ...c, name: baseName };
+      } else {
+        seenNames[baseName]++;
+        return { ...c, name: `${baseName} - ${seenNames[baseName]}` };
+      }
+    }
+    return { ...c, name: trimmedName };
+  });
+};
 
 interface AdminDashboardProps {
   currentUser: User;
@@ -246,7 +268,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         targetCount: isMultiCompany ? companyTargets.reduce((sum, t) => sum + (t.count || 0), 0) : Number(newEventTarget),
         startDate: newEventStart,
         endDate: newEventEnd,
-        companies: isMultiCompany ? companyTargets : undefined
+        companies: isMultiCompany ? ensureUniqueCompanyNames(companyTargets) : undefined
       };
       onUpdateEvent(updatedEvent);
     } else {
@@ -258,7 +280,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         startDate: newEventStart,
         endDate: newEventEnd,
         status: 'ACTIVE',
-        companies: isMultiCompany ? companyTargets : undefined
+        companies: isMultiCompany ? ensureUniqueCompanyNames(companyTargets) : undefined
       };
       onAddEvent(newEvent);
     }
@@ -401,10 +423,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         if (rows.length > 1) {
           // MERGE: Multiple rows with same event name → one event with multiple companies
-          const companies: CompanyTarget[] = rows.map(r => ({
+          const companies: CompanyTarget[] = ensureUniqueCompanyNames(rows.map(r => ({
             name: r.companyName || 'Şirket Belirtilmemiş',
             count: r.target
-          }));
+          })));
           const totalTarget = companies.reduce((sum, c) => sum + c.count, 0);
 
           const newEvent: Event = {
