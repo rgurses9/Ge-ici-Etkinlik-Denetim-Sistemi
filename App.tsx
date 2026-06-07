@@ -615,9 +615,13 @@ const App: React.FC = () => {
   const handleStartAudit = (eventId: string, companyName?: string) => {
     setActiveEventId(eventId);
     setActiveCompanyName(companyName || null);
+    handleSyncEventData(eventId, true); // Background sync to ensure counters match actual document count
   };
 
   const handleEndAudit = () => {
+    if (activeEventId) {
+      handleSyncEventData(activeEventId, true); // Sync on exit
+    }
     setActiveEventId(null);
     setActiveCompanyName(null);
   };

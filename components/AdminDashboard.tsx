@@ -1390,6 +1390,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                                             <Edit size={16} />
                                                           </button>
                                                           <button
+                                                            onClick={async () => {
+                                                              await onSyncEvent(event.id);
+                                                            }}
+                                                            className="p-1.5 text-orange-500 hover:text-orange-600 dark:text-orange-400 dark:hover:text-orange-300 transition"
+                                                            title="Sayacı Eşitle (Yeniden Hesapla)"
+                                                          >
+                                                            <RefreshCw size={16} />
+                                                          </button>
+                                                          <button
                                                             onClick={() => {
                                                               if (confirm(`"${event.name}" etkinliğini devam eden denetimlere iade etmek istediğinize emin misiniz?`)) {
                                                                 onReactivateEvent(event.id);
