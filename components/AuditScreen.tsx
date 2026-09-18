@@ -1229,7 +1229,11 @@ const AuditScreen: React.FC<AuditScreenProps> = ({
                       </td>
                       <td className="px-3 py-1.5">
                         <button
-                          onClick={() => onDelete(entry)}
+                          onClick={() => {
+                            if (confirm(`Bu kimlik kaydı silinsin mi?\n\n👤 ${entry.citizen.name} ${entry.citizen.surname}\n🆔 TC: ${entry.citizen.tc}\n\nBu işlem geri alınamaz.`)) {
+                              onDelete(entry);
+                            }
+                          }}
                           className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"
                           title="Kaydı Sil"
                         >
